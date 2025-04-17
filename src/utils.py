@@ -1,4 +1,3 @@
-
 from owlready2 import *
 import re
 from sentence_transformers import SentenceTransformer
