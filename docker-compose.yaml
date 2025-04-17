@@ -10,7 +10,7 @@ services:
       - "7687:7687"  # Bolt protocol
     environment:
       # Neo4j authentication
-      NEO4J_AUTH: neo4j/ThisIsMyPassword  
+      NEO4J_AUTH: neo4j/ThisIsMyPassword  ##! CHANGE PASSWORD TO YOUR LIKING AND SET IT IN .env
       # Enable APOC and GDS plugins for advanced graph processing
       NEO4J_PLUGINS: '["apoc", "graph-data-science", "n10s"]'
       

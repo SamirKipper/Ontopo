@@ -1,6 +1,7 @@
 - [EmbedAlign](#embedalign)
   - [Installation](#installation)
   - [Running the code](#running-the-code)
+  - [useful websites and documentation of dependencies](#useful-websites-and-documentation-of-dependencies)
 
 
 # EmbedAlign
@@ -9,15 +10,20 @@ This Repository explores alignment processes based on vector embedding of the la
 
 ## Installation
 
-create a python virtual environment with
+run the setup.sh with 
 ```bash
-python3.10 -m venv <venv_name>
+chmod +x setup.sh
 ```
 
-run the docker container for the neo4j with 
-
-```bash
-docker compose up -d
-```
+>[!NOTE]
+>
+>Alternatively you can create your own environment and istall from the requirements.txt. The Code uses some downloads from NLTK. For the sake of runtime, it is advisable to download these locally, if you create the environment this way.
 
 ## Running the code
+
+## useful websites and documentation of dependencies
+
+- [shapely](https://pypi.org/project/shapely/)
+- [neomodel](https://neomodel.readthedocs.io/en/latest/getting_started.html)
+- [langchain community Neo4j](https://api.python.langchain.com/en/latest/vectorstores/langchain_community.vectorstores.neo4j_vector.Neo4jVector.html#langchain_community.vectorstores.neo4j_vector.Neo4jVector)
+- 
