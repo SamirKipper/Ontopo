@@ -1,0 +1,38 @@
+version: '2.2'
+
+services:
+  neo4j:
+    image: neo4j:5.12.0  # Use the latest Neo4j version
+    container_name: neo4j
+    restart: always
+    ports:
+      - "7474:7474"  # Neo4j Browser
+      - "7687:7687"  # Bolt protocol
+    environment:
+      # Neo4j authentication
+      NEO4J_AUTH: neo4j/ThisIsMyPassword  
+      # Enable APOC and GDS plugins for advanced graph processing
+      NEO4J_PLUGINS: '["apoc", "graph-data-science", "n10s"]'
+      
+      # Enable vector database functionality (GDS)
+      NEO4J_dbms_memory_pagecache_size: 2G
+      NEO4J_dbms_memory_heap_initial__size: 2G
+      NEO4J_dbms_memory_heap_max__size: 4G
+
+      
+      # Allow RDF and vector imports
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*,gds.*,n10s.*"
+      NEO4J_dbms_security_procedures_allowlist: "apoc.*,gds.*,n10s.*"
+      NEO4J_dbms_logs_debug_level: INFO
+
+    volumes:
+      - neo4j_data:/data       # Persistent data storage
+      - neo4j_logs:/logs       # Persistent logs
+      - neo4j_import:/import   # Import folder for RDF and vector data
+      - neo4j_plugins:/plugins # Plugins folder for NeoSemantics and others
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:
