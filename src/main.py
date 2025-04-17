@@ -13,15 +13,27 @@ from langchain_community.embeddings.openai import OpenAIEmbeddings
 
 
 
-load_dotenv()
 
 
+def load_env():
+    load_dotenv()
+    config.DATABASE_URL = os.getenv("NEO4J_ENDPOINT")
+    config.NEO4J_USERNAME = os.getenv("NEO4J_USER")
+    config.NEO4J_PASSWORD = os.getenv("NEO4j_PASSWORD")
+    
+def load_ontologies(file1, file2):
+    try:
+        ## NOTE: might require namespace handling
+        onto1 = get_ontology(file1).load()
+        onto2 = get_ontology(file2).load()
+        return onto1, onto2
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-config.DATABASE_URL = os.getenv("NEO4J_ENDPOINT")
-config.NEO4J_USERNAME = os.getenv("NEO4J_USER")
-config.NEO4J_PASSWORD = os.getenv("NEO4j_PASSWORD")
 
+def align_ontologies(file1: str, file2: str):
+    pass
 
 
 if __name__ == "__main__":
-    pass
+    load_env()
