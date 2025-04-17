@@ -21,14 +21,18 @@ def load_env():
     config.NEO4J_USERNAME = os.getenv("NEO4J_USER")
     config.NEO4J_PASSWORD = os.getenv("NEO4j_PASSWORD")
     
-def load_ontologies(file1, file2):
-    try:
-        ## NOTE: might require namespace handling
-        onto1 = get_ontology(file1).load()
-        onto2 = get_ontology(file2).load()
-        return onto1, onto2
-    except Exception as e:
-        return f"Error: {str(e)}"
+def register_ontology(
+                    file: str, 
+                    basenamespace: str = None, 
+                    imports: str = None):
+    world = World()
+    if imports:
+        for f in imports:
+            f_onto = world.get_ontology(f)
+    full = world.get_ontology(file).load()
+    if basenamespace:
+        onto = get_namespace(basenamespace)
+    return world
 
 
 def align_ontologies(file1: str, file2: str):
