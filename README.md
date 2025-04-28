@@ -6,14 +6,24 @@
 
 # EmbedAlign
 
-This Repository explores alignment processes based on vector embedding of the labels and definitions of Ontologies
+This Repository explores alignment processes based on vector embedding of the labels and definitions of Ontologies and underlying graphstructure.
 
 ## Installation
 
-run the setup.sh with 
+First, change the password, port and username in the docker compose file to your specific preferences or needs.
+Next, create a .env file, that contains the following information:
+```env
+NEO4J_ENDPOINT="yourPort"
+NEO4J_USER="yourUserName"
+NEO4j_PASSWORD="YourPassword"
+```
+
+Then run the setup.sh with 
 ```bash
 chmod +x setup.sh
 ```
+
+you should now have a python environment with all necessary dependencies and a neo4j Database running on the port you specified(default: 7474)
 
 >[!NOTE]
 >

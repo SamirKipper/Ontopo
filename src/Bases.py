@@ -1,44 +1,85 @@
-from neomodel import StructuredNode, RelationshipTo, StringProperty
+from neomodel import StructuredNode, RelationshipTo, StringProperty, StructuredRel, ArrayProperty, FloatProperty
 
-class OntologyObjectProperty(StructuredNode):
+# TODO:
+    # - check for proper handling of instantiation and subPropertyOf/subClassOf relationship
+
+class rdfProperty(StructuredRel):
     uri = StringProperty(unique_index=True)
     label = StringProperty()
     definition = StringProperty()
-    domain = RelationshipTo('Class', 'DOMAIN')
-    range = RelationshipTo('Class', 'RANGE')
-    subPropertyOf = RelationshipTo('ObjectProperty', 'subPropertyOf')
+    # domain = RelationshipTo('Class', 'DOMAIN')
+    # range = RelationshipTo('Class', 'RANGE')
+    # subPropertyOf = RelationshipTo('ObjectProperty', 'subPropertyOf')
     
-class FunctionalProperty(OntologyObjectProperty):
-    super().__init__()
+
+## * PROPERTIES
+class ObjectProperty(rdfProperty):
     pass
-class InverseFunctionalProperty(OntologyObjectProperty):
-    super().__init__()
+    
+### * Class relationships
+
+class rdfsSubClassOf(rdfProperty):
+    pass    
+
+class owlDisjointwith(rdfProperty):
+    pass    
+    
+###* OWL PROPERTY TYPES 
+
+class FunctionalProperty(ObjectProperty):
     pass
-class TransitiveProperty(OntologyObjectProperty):
-    super().__init__()
+    
+class InverseFunctionalProperty(ObjectProperty):
     pass
-class SymmetricProperty(OntologyObjectProperty):    
-    super().__init__()
+   
+class TransitiveProperty(ObjectProperty):
     pass
-class AsymmetricProperty(OntologyObjectProperty):
-    super().__init__()
+    
+class SymmetricProperty(ObjectProperty):    
     pass
-class ReflexiveProperty(OntologyObjectProperty):
-    super().__init__()
+    
+class AsymmetricProperty(ObjectProperty):
     pass
-class IrreflexiveProperty(OntologyObjectProperty):
-    super().__init__()
+  
+class ReflexiveProperty(ObjectProperty):
     pass
-class AntiSymmetricProperty(OntologyObjectProperty):
-    super().__init__()
+   
+class IrreflexiveProperty(ObjectProperty):
     pass
+    
+class AntiSymmetricProperty(ObjectProperty):
+    pass
+ 
+
+class DatatypeProperty(StructuredRel):
+    pass
+   
+    
 
     
-class OntologyClass(StructuredNode):
+class rdfClass(StructuredNode):
     uri = StringProperty(unique_index=True)
     label = StringProperty()
+    label_embedding = ArrayProperty(FloatProperty())
     definition = StringProperty()
-    subClassOf = RelationshipTo('Class', 'subClassOf')
-    disjointWith = RelationshipTo('Class', 'disjointWith')
+    definition_embedding = ArrayProperty(FloatProperty())
+    subClassOf = RelationshipTo('OntologyClass', 'subClassOf')
+    disjointWith = RelationshipTo('OntologyClass', 'disjointWith')
+    # unionOf = RelationshipTo('OntologyClass', 'unionOf')
+    # intersectionOf = RelationshipTo('OntologyClass', 'intersectionOf')
+    
+class owlClass(rdfClass):
+    pass
+
+## NOTE: instance of owl:Class
+class owlThing(StructuredNode):
+    pass
+
+class owlNothing(StructuredNode):
+    # disjointWith = owlThing
+    pass ## NOTE: check how to properly handle this in neomodel
+class Individual(StructuredNode):
+    uri = StringProperty(unique = True)
+    label = StringProperty()
     
 
