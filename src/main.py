@@ -7,7 +7,7 @@ from owlready2 import *
 import chromadb
 import sknetwork as skn
 import networkx as nx
-
+from pyoxigraph import *
 ## TODO:
     # - restucture dicts so you can use them in a plot
 
