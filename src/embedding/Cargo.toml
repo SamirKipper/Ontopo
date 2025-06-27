@@ -1,0 +1,13 @@
+[package]
+name = "embedding"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25.1", features = ["extension-module"] }
+petgraph = "0.8"
+oxigraph = "0.4.11"
+chromadb = "2.2.2"
