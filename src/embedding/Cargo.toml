@@ -11,3 +11,4 @@ pyo3 = { version = "0.25.1", features = ["extension-module"] }
 petgraph = "0.8"
 oxigraph = "0.4.11"
 chromadb = "2.2.2"
+node2vec = "1.0.1"
