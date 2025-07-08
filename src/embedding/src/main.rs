@@ -1,1 +1,6 @@
-mod Structs;
+
+
+fn main(){
+    return
+        println!("hi")
+}
