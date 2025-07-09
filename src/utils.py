@@ -4,7 +4,8 @@ import owlready2.entity
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from nltk.corpus import wordnet
-from owlready2 import *
+from pyoxigraph import *
+from OWL import *
 
 ##* NLP CONCEPTS
 def create_embedding(text:str) -> np.array:
@@ -46,48 +47,66 @@ def format_chroma_results(results) -> dict:
         })
     return formatted_results
     
-##? DO I NEED THIS WITH NEO4J?
-def create_embedding_dict(ontology):
-    label_dict = dict()
-    def_dict = dict()
-    for c in ontology.classes():
-        ## ! still needs correct error handling
-        try:
-            label_vec = create_embedding(c.label[0])
-            label_dict[c.iri] = label_vec
-        except:
-            print("no label found")
-            
-        try:
-            def_vec = create_embedding(c.definition[0])
-            def_dict[c.iri] = def_vec
-        except:
-            ### ! create proper function that handles this properly
-            set = wordnet.synsets(c.label[0])
-            item = set[0]
-            defi = item.definition()
-            def_vec = create_embedding(defi)
-            def_dict[c.iri] = def_vec
-            print(f"No definition for {c.iri}, gave definition : {defi}")
 
 
 
-##* ONTOLOGY CONCEPTS
-
-def disect_AND_construction(intersection:And) -> list:
-    return [c for c in intersection.Classes]
-
-def get_negated(statement:Not):
-    return statement.Class
+##* OXI UTILS
 
 
 
-if __name__ == "__main__":
-    file = "/root/github/EmbedAlign/test/bfo-core.owl"
-    bfo = get_ontology(file).load()
-    bfo.get_namespace("http://purl.obolibrary.org/obo/")
-    bearer = bfo.search(label = "bearer of")[0]
-    dom = bearer.domain[0]
-    dissected = disect_AND_construction(dom)
-    dissected = [d for d in dissected if type(d) == owlready2.entity.ThingClass]
-    print(dissected)
+
+
+def extract_rdf_list(store: Store, list_node) -> list:
+        """Traverses an RDF list starting from list_node"""
+        items = []
+        current = list_node
+        while current != RDF_NIL:
+            first_quads = list(store.quads_for_pattern(current, RDF_FIRST, None, None))
+            if not first_quads:
+                break
+            items.append(first_quads[0].object)
+            rest_quads = list(store.quads_for_pattern(current, RDF_REST, None, None))
+            if not rest_quads:
+                break
+            current = rest_quads[0].object
+        return items
+
+
+def pop_blank_to_class_list(bnode: BlankNode, store: Store) -> list:
+    """
+    Extracts named classes from a class expression in a blank node,
+    excluding any class found inside owl:complementOf.
+    
+    Args:
+        bnode (BlankNode): The root blank node of the class expression.
+        store (Store): The PyOxigraph store.
+
+    Returns:
+        list: A list of NamedNode URIs representing included classes.
+    """
+    results = []
+    visited = set()
+    queue = [bnode]
+
+    while queue:
+        current = queue.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+
+        # Skip this node entirely if it's an owl:complementOf wrapper
+        comp_quad = next(store.quads_for_pattern(current, OWL_COMPLEMENT_OF, None, None), None)
+        if comp_quad:
+            continue  # skip complements entirely
+
+        for operator in [OWL_UNION_OF, OWL_INTERSECTION_OF]:
+            op_quad = next(store.quads_for_pattern(current, operator, None, None), None)
+            if op_quad:
+                list_node = op_quad.object
+                elements = extract_rdf_list(store, list_node)
+                for el in elements:
+                    if isinstance(el, NamedNode):
+                        results.append(el)
+                    elif isinstance(el, BlankNode):
+                        queue.append(el)
+    return results
