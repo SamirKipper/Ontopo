@@ -5,10 +5,16 @@ import chromadb
 import time
 from pprint import pprint
 from node2vec import Node2Vec
+from concurrent.futures import ThreadPoolExecutor
 
+from utils import pop_blank_to_class_list
+
+
+
+## NOTE: classes are currently still stored with iri, 
 
 def get_classes(store : Store)->dict:
-    
+    start_time = time.time()
     query = """
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -40,9 +46,11 @@ def get_classes(store : Store)->dict:
                 parents.append(o.value) ##! Not quite what i want in otput
         class_dict["parents"] = parents
         classes.append(class_dict)
+    print(f"class retrieval: {time.time() - start_time}")
     return classes
 
 def get_object_properties(store : Store) -> list:
+    start_time = time.time()
     query = """
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -52,7 +60,7 @@ def get_object_properties(store : Store) -> list:
     WHERE{
         
         ?prop rdf:type owl:ObjectProperty;
-              rdfs:label ?label.
+            rdfs:label ?label.
     }
     """
     results = store.query(query)
@@ -60,21 +68,21 @@ def get_object_properties(store : Store) -> list:
     jay = json.loads(serialized)
     properties = []
     for p in jay["results"]["bindings"]:
+        p_node = NamedNode(p["prop"]["value"])
         prop_dict = {
-            "iri:": p["prop"]["value"],
+            "node": p_node,
             "label": p["label"]["value"],
         }
         dom = []
         ran = []
-        p_node = NamedNode(p["prop"]["value"])
         dom_node = NamedNode("http://www.w3.org/2000/01/rdf-schema#domain")
         ran_node = NamedNode("http://www.w3.org/2000/01/rdf-schema#range")
         dom_results = store.quads_for_pattern(p_node, dom_node, None, None)
         for r in dom_results:
             if type(r.object) == NamedNode:
-                    dom.append(r.object.value)
+                    dom.append(NamedNode(r.object.value))
             elif type(r.object) == BlankNode:
-                    pass
+                    dom.append(BlankNode(r.object.value))
         prop_dict["dom"] = dom
         del dom_results
         ran_results = store.quads_for_pattern(p_node, ran_node, None, None)
@@ -82,9 +90,10 @@ def get_object_properties(store : Store) -> list:
             if type(r.object) == NamedNode:
                     ran.append(r.object.value)
             elif type(r.object) ==BlankNode:
-                    pass
+                    ran.append(BlankNode(r.object.value))
         prop_dict["ran"] = ran
         properties.append(prop_dict)
+    print(f"prop retrieval: {time.time() - start_time}")
     return properties
 
 
@@ -110,8 +119,8 @@ def embed_classes(classes:list, collection: chromadb.Collection) -> None:
 def embed_props(bindings:list, collection : chromadb.Collection) -> None:
     start_time = time.time()
     for b in bindings:
-        iri = b["prop"]["value"]
-        label = b["label"]["value"]
+        iri = b["node"].value
+        label = b["label"]
         label_collection.add(
             ids = [iri],
             documents = [label]
@@ -119,40 +128,28 @@ def embed_props(bindings:list, collection : chromadb.Collection) -> None:
     duration = time.time() - start_time
     print(f"embedding time for properties: {duration}")
     
-def get_prop_dom_ran(prop_bindings:dict, class_bindings: dict)->tuple:
-    """returns a list of all classes, that can carry a given property
+    
 
-    Args:
-        prop_bindings (dict): the bindings given from the SPARQL Query
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        
-        SELECT ?prop ?label ?domain ?range
-        WHERE{
+def set_prop_dom_ran(props: dict, store: Store)->tuple:
+    start_time = time.time()
+    for p in props:
+        dom = p["dom"]
+        ran = p["ran"]
+        for d in dom:
+            if type(d) == BlankNode:
+                popped_dom = pop_blank_to_class_list(bnode = d, store = store)
+                p["dom"] = popped_dom
+            else:
+                pass
+        for r in ran:
+            if type(r) == BlankNode:
+                popped_ran = pop_blank_to_class_list(bnode = r, store = store)
+                p["ran"] = popped_ran
+            else:
+                pass
+    print(f"pop time = {time.time () - start-time }")
             
-            ?prop rdf:type owl:ObjectProperty;
-                rdfs:label ?label.
-            
-            OPTIONAL
-            {
-            ?prop rdfs:domain ?domain;
-                rdfs:range ?range.
-            }
-        }
-        as specified by the SPARQL Query language
-
-    Returns:
-        tuple of lists: dom, ran each containing all classes that be in domain or range respectively of the given property
-    """
-    dom = []
-    ran = []
-    match prop_bindings["dom"]["type"]:
-        case "uri":
-            dom += [prop_bindings["dom"]["value"]]
-            
-            
-    return dom, ran
+    return props
 
 
 def create_core_graph(classes:list) -> nx.DiGraph:
@@ -171,39 +168,60 @@ def create_core_graph(classes:list) -> nx.DiGraph:
             for parent in parents
         ])
 
-    print(f"")
+    print(f"core graph creation : {time.time()-start_time}")
     return graph
 
 def create_dom_ran_graph(core_graph:nx.Graph, prop_bindings: list)->nx.Graph:
-    for p in props:
-        pass
-    print(f"dom-ran-graph creation : {duration}")
-    return none
+    start = time.time()
+    for p in prop_bindings:
+        zipped = list(zip(p["dom"], p["ran"]))
+        core_graph.add_edges_from(zipped, label = p["node"].value)
+        
+    print(f"dom-ran-graph creation : {time.time()-start}")
+    return core_graph
+
+
+
 
 def embed_graph(graph: nx.DiGraph)->None:
+## NOTE:
+
+# - 8 workers ~ 29 sec
+# - 6 workers ~ 27 sec
+# - 4 workers ~ 23 sec
+# - 2 workers ~ 20 sec
+# - 1 worker  ~ 17 sec
+
+
     g_time = time.time()
-    node2vec = Node2Vec(graph, dimensions=64, walk_length=30, num_walks=200, workers=4)
+    node2vec = Node2Vec(graph, dimensions=64, walk_length=5, num_walks=200, workers=1)
     model = node2vec.fit(window=10, min_count=1, batch_words=4)
     print(f"graph embedding time : {time.time()-g_time}")
 
-def embed_ontology() -> None:
+def embed_ontology(oxi_store, label_collection, structure_collection) -> None:
+    class_bindings = get_classes(oxi_store)
+    prop_bindings = get_object_properties(oxi_store)
     
-    store = Store()
-    client = chromadb.Client()
-    label_collection = client.create_collection("label")
-    structure_collection = client.create_collection("structure") 
+    graph = create_core_graph(class_bindings)
+    full_graph = create_dom_ran_graph(graph, prop_bindings)
     
-    start_time = time.time()
-    class_bindings = get_classes(store)
-    prop_bindings = get_object_properties(store)
-    graph = create_graph(class_bindings, prop_bindings)
-    embed_classes(class_bindings)
-    embed_props(prop_bindings)
-    embed_graph(graph)
+    with ThreadPoolExecutor(max_workers = 12) as exec:
+        
+        f1 = exec.submit(embed_classes ,class_bindings, label_collection)
+        f2 = exec.submit(embed_props, prop_bindings, label_collection)
+        f3 = exec.submit(embed_graph, full_graph)
+        
     
-    print(f"total runtime: {time.time()-start_time}")
-
+    
 
 if __name__ == "__main__":
+    start_time = time.time()
+    import os
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    store = Store()
     store.load(path = "/home/kipp_sa/github/EmbedAlign/test/bfo-core.owl", format = RdfFormat.RDF_XML)
-    main()
+    Client = chromadb.Client()
+    label_collection = Client.get_or_create_collection(name="labels")
+    structure_collection = Client.get_or_create_collection(name = "Structure")
+    embed_ontology(store, label_collection, structure_collection)
+    print(f"total runtime: {time.time()-start_time}")

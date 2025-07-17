@@ -1,11 +1,11 @@
-from owlready2 import *
+
 import re
 import owlready2.entity
-from sentence_transformers import SentenceTransformer
+
 import numpy as np
 from nltk.corpus import wordnet
 from pyoxigraph import *
-from OWL import *
+from OWL import Operators
 
 ##* NLP CONCEPTS
 def create_embedding(text:str) -> np.array:
@@ -60,12 +60,12 @@ def extract_rdf_list(store: Store, list_node) -> list:
         """Traverses an RDF list starting from list_node"""
         items = []
         current = list_node
-        while current != RDF_NIL:
-            first_quads = list(store.quads_for_pattern(current, RDF_FIRST, None, None))
+        while current != Operators["RDF_NIL"]:
+            first_quads = list(store.quads_for_pattern(current, Operators["RDF_FIRST"], None, None))
             if not first_quads:
                 break
             items.append(first_quads[0].object)
-            rest_quads = list(store.quads_for_pattern(current, RDF_REST, None, None))
+            rest_quads = list(store.quads_for_pattern(current, Operators["RDF_REST"], None, None))
             if not rest_quads:
                 break
             current = rest_quads[0].object
@@ -95,12 +95,12 @@ def pop_blank_to_class_list(bnode: BlankNode, store: Store) -> list:
         visited.add(current)
 
         # Skip this node entirely if it's an owl:complementOf wrapper
-        comp_quad = next(store.quads_for_pattern(current, OWL_COMPLEMENT_OF, None, None), None)
+        comp_quad = next(store.quads_for_pattern(current, Operators["OWL_COMPLEMENT_OF"], None, None), None)
         if comp_quad:
             continue  # skip complements entirely
 
-        for operator in [OWL_UNION_OF, OWL_INTERSECTION_OF]:
-            op_quad = next(store.quads_for_pattern(current, operator, None, None), None)
+        for operator in Operators.keys():
+            op_quad = next(store.quads_for_pattern(current, Operators[operator], None, None), None)
             if op_quad:
                 list_node = op_quad.object
                 elements = extract_rdf_list(store, list_node)
