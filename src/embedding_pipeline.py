@@ -147,7 +147,7 @@ def set_prop_dom_ran(props: dict, store: Store)->tuple:
                 p["ran"] = popped_ran
             else:
                 pass
-    print(f"pop time = {time.time () - start-time }")
+    print(f"pop time = {time.time () - start_time }")
             
     return props
 

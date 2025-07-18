@@ -8,18 +8,18 @@ from pyoxigraph import *
 from OWL import Operators
 
 ##* NLP CONCEPTS
-def create_embedding(text:str) -> np.array:
-    """creates the embedding using the sentence transformers module
+# def create_embedding(text:str) -> np.array:
+#     """creates the embedding using the sentence transformers module
 
-    Args:
-        text (str): the text to be embedded
+#     Args:
+#         text (str): the text to be embedded
 
-    Returns:
-        np.array: the embedding array
-    """
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    embedding = model.encode(text)
-    return embedding
+#     Returns:
+#         np.array: the embedding array
+#     """
+#     model = SentenceTransformer('all-MiniLM-L6-v2')
+#     embedding = model.encode(text)
+#     return embedding
     
     
 def preprocess_pascalCamel(text: str) -> str:
