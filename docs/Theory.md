@@ -29,7 +29,7 @@ note, that graphs defined as such are not directed, i.e. the for two nodes $(v_1
 
 ### Ontology Alignment
 
-We wll be looking into a simplified version of the Ontology first, by only looking at Classes (i.e. Hierarchy and disjointness) and the Objectproperties.
+We will be looking into a simplified version of the Ontology first, by only looking at Classes (i.e. Hierarchy and disjointness) and the Objectproperties.
 Let $O_1$ and $O_2$ be Ontologies with Classes $C_1, C_2$, Objectproperties $P_1,P_2$ and $\vert C_1\vert = n,\ \vert C_2 \vert = m,\ n\leq m$.
 Creating an Ontology Alignment mathematically boils down to finding isomorphic subgraphs, which is generally an open Problem in mathematics.
 To Identify a potential bijection between the classes, we embed the labels and definitions, calculate the cosine distance for both and then calculate the reciprocal rank fusion. Then, each Class and Property of the smaller Ontology "points" to the corresponding Ressource with the highest value in the other Ontology. 
@@ -38,4 +38,3 @@ This gives us a permutation matrix $P = P_{C_1, C_2}$ depending on the set of cl
 ```math
 \min_{C_1,C_2}\Vert A_1- P(A_2)\Vert
 ```
-

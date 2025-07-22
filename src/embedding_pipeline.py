@@ -3,11 +3,11 @@ from pyoxigraph import *
 import json
 import chromadb
 import time
-from pprint import pprint
 from node2vec import Node2Vec
+from node2vec.edges import HadamardEmbedder
 from concurrent.futures import ThreadPoolExecutor
+from utils import get_dom_ran
 
-from utils import pop_blank_to_class_list
 
 
 
@@ -43,7 +43,7 @@ def get_classes(store : Store)->dict:
         for r in subClassResults:
             o = r.object
             if type(o) == NamedNode:
-                parents.append(o.value) ##! Not quite what i want in otput
+                parents.append(o.value)
         class_dict["parents"] = parents
         classes.append(class_dict)
     print(f"class retrieval: {time.time() - start_time}")
@@ -79,18 +79,21 @@ def get_object_properties(store : Store) -> list:
         ran_node = NamedNode("http://www.w3.org/2000/01/rdf-schema#range")
         dom_results = store.quads_for_pattern(p_node, dom_node, None, None)
         for r in dom_results:
-            if type(r.object) == NamedNode:
-                    dom.append(NamedNode(r.object.value))
-            elif type(r.object) == BlankNode:
-                    dom.append(BlankNode(r.object.value))
+            dom.append(r.object)
+            # if type(r.object) == NamedNode:
+            #         dom.append(NamedNode(r.object.value))
+            # elif type(r.object) == BlankNode:
+            #         dom.append(BlankNode(r.object.value))
+
         prop_dict["dom"] = dom
         del dom_results
         ran_results = store.quads_for_pattern(p_node, ran_node, None, None)
         for r in ran_results:
-            if type(r.object) == NamedNode:
-                    ran.append(r.object.value)
-            elif type(r.object) ==BlankNode:
-                    ran.append(BlankNode(r.object.value))
+            ran.append(r.object)
+            # if type(r.object) == NamedNode:
+            #         ran.append(r.object.value)
+            # elif type(r.object) ==BlankNode:
+            #         ran.append(BlankNode(r.object.value))
         prop_dict["ran"] = ran
         properties.append(prop_dict)
     print(f"prop retrieval: {time.time() - start_time}")
@@ -136,14 +139,16 @@ def set_prop_dom_ran(props: dict, store: Store)->tuple:
         dom = p["dom"]
         ran = p["ran"]
         for d in dom:
-            if type(d) == BlankNode:
-                popped_dom = pop_blank_to_class_list(bnode = d, store = store)
+            if type(d) == NamedNode:
+            
+                popped_dom = get_dom_ran(poppable = d, store = store) #! overwrite
                 p["dom"] = popped_dom
             else:
                 pass
         for r in ran:
-            if type(r) == BlankNode:
-                popped_ran = pop_blank_to_class_list(bnode = r, store = store)
+            if type(r) == NamedNode:
+                
+                popped_ran = get_dom_ran(poppable = r, store = store) #! overwrite
                 p["ran"] = popped_ran
             else:
                 pass
@@ -174,8 +179,11 @@ def create_core_graph(classes:list) -> nx.DiGraph:
 def create_dom_ran_graph(core_graph:nx.Graph, prop_bindings: list)->nx.Graph:
     start = time.time()
     for p in prop_bindings:
-        zipped = list(zip(p["dom"], p["ran"]))
-        core_graph.add_edges_from(zipped, label = p["node"].value)
+        try:
+            zipped = list(zip(p["dom"], p["ran"]))
+            core_graph.add_edges_from(zipped, label = p["node"].value)
+        except:
+            pass
         
     print(f"dom-ran-graph creation : {time.time()-start}")
     return core_graph
@@ -185,18 +193,30 @@ def create_dom_ran_graph(core_graph:nx.Graph, prop_bindings: list)->nx.Graph:
 
 def embed_graph(graph: nx.DiGraph)->None:
 ## NOTE:
-
 # - 8 workers ~ 29 sec
 # - 6 workers ~ 27 sec
 # - 4 workers ~ 23 sec
 # - 2 workers ~ 20 sec
 # - 1 worker  ~ 17 sec
-
-
     g_time = time.time()
-    node2vec = Node2Vec(graph, dimensions=64, walk_length=5, num_walks=200, workers=1)
+    node2vec = Node2Vec(graph, dimensions=128, walk_length=5, num_walks=200, workers=1)
     model = node2vec.fit(window=10, min_count=1, batch_words=4)
+    embeddings = {key: model.wv[key] for key in model.wv.index_to_key}
     print(f"graph embedding time : {time.time()-g_time}")
+    return embeddings
+
+def add_graph_structure(embeddings: dict, collection : chromadb.Collection) -> None:
+    ids = list(embeddings.keys())
+    vectors = [embeddings[node_id] for node_id in ids]
+    documents = [node_id for node_id in ids]
+    metadatas = [{"type": "graph_node", "node_id": node_id} for node_id in ids]
+    collection.add(
+    ids=ids,
+    embeddings=vectors,
+    documents=documents,
+    metadatas=metadatas
+    )
+    
 
 def embed_ontology(oxi_store, label_collection, structure_collection) -> None:
     class_bindings = get_classes(oxi_store)
@@ -210,9 +230,9 @@ def embed_ontology(oxi_store, label_collection, structure_collection) -> None:
         f1 = exec.submit(embed_classes ,class_bindings, label_collection)
         f2 = exec.submit(embed_props, prop_bindings, label_collection)
         f3 = exec.submit(embed_graph, full_graph)
-        
-    
-    
+    result = f3.result()
+    add_graph_structure(result, structure_collection)
+
 
 if __name__ == "__main__":
     start_time = time.time()

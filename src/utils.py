@@ -1,26 +1,12 @@
 
 import re
-import owlready2.entity
-
-import numpy as np
-from nltk.corpus import wordnet
 from pyoxigraph import *
-from OWL import Operators
+import networkx as nx
+from OWL import OWL
+from RDF import RDF
+from RDFS import RDFS
 
-##* NLP CONCEPTS
-# def create_embedding(text:str) -> np.array:
-#     """creates the embedding using the sentence transformers module
-
-#     Args:
-#         text (str): the text to be embedded
-
-#     Returns:
-#         np.array: the embedding array
-#     """
-#     model = SentenceTransformer('all-MiniLM-L6-v2')
-#     embedding = model.encode(text)
-#     return embedding
-    
+##* NLP UTILS
     
 def preprocess_pascalCamel(text: str) -> str:
     """decomposes a pascalCase or CamelCase string into a a more natural representation of the language
@@ -47,66 +33,93 @@ def format_chroma_results(results) -> dict:
         })
     return formatted_results
     
+##* CLASSES
+
+
 
 
 
 ##* OXI UTILS
 
-
-
-
-
-def extract_rdf_list(store: Store, list_node) -> list:
+def extract_rdf_list( list_node, store: Store,) -> list:
         """Traverses an RDF list starting from list_node"""
         items = []
         current = list_node
-        while current != Operators["RDF_NIL"]:
-            first_quads = list(store.quads_for_pattern(current, Operators["RDF_FIRST"], None, None))
+        while current != RDF.nil:
+            first_quads = list(store.quads_for_pattern(current, RDF.first, None, None))
             if not first_quads:
                 break
             items.append(first_quads[0].object)
-            rest_quads = list(store.quads_for_pattern(current, Operators["RDF_REST"], None, None))
+            rest_quads = list(store.quads_for_pattern(current, RDF.rest, None, None))
             if not rest_quads:
                 break
             current = rest_quads[0].object
         return items
-
-
-def pop_blank_to_class_list(bnode: BlankNode, store: Store) -> list:
-    """
-    Extracts named classes from a class expression in a blank node,
-    excluding any class found inside owl:complementOf.
     
-    Args:
-        bnode (BlankNode): The root blank node of the class expression.
-        store (Store): The PyOxigraph store.
-
-    Returns:
-        list: A list of NamedNode URIs representing included classes.
-    """
-    results = []
-    visited = set()
-    queue = [bnode]
-
-    while queue:
-        current = queue.pop()
-        if current in visited:
-            continue
-        visited.add(current)
-
-        # Skip this node entirely if it's an owl:complementOf wrapper
-        comp_quad = next(store.quads_for_pattern(current, Operators["OWL_COMPLEMENT_OF"], None, None), None)
-        if comp_quad:
-            continue  # skip complements entirely
-
-        for operator in Operators.keys():
-            op_quad = next(store.quads_for_pattern(current, Operators[operator], None, None), None)
-            if op_quad:
-                list_node = op_quad.object
-                elements = extract_rdf_list(store, list_node)
-                for el in elements:
-                    if isinstance(el, NamedNode):
-                        results.append(el)
-                    elif isinstance(el, BlankNode):
-                        queue.append(el)
+    
+def get_subclasses(OntoClass : NamedNode, store:Store) -> list:
+    results = list(store.quads_for_pattern(None, RDFS.subClassOf, OntoClass, None))
+    subclasses = []
+    for r in results:
+        if isinstance(r.subject, NamedNode):
+            subclasses.append(r.subject)
+        else:
+            pass
+    return subclasses
+    
+def get_descendents(OntoClass:NamedNode, store:Store) -> list:
+    subclasses = get_subclasses(OntoClass, store)
+    results = None
+    if subclasses:
+        results = []
+        queue = subclasses
+        while queue:
+            current = queue.pop()
+            results.append(current)
+            q_subs = get_subclasses(current,store)
+            if q_subs:
+                queue.extend(q_subs)
     return results
+
+def get_classes_list(store:Store) -> list:
+    quads = store.quads_for_pattern(None, RDF.type, OWL.Class, None)
+    classes = [q.subject for q in quads if type(q.subject) == NamedNode]
+    return classes
+
+def get_complement(OntoClass : NamedNode, store : Store) -> list:
+    desc = get_descendents(OntoClass, store)
+    class_group = desc + [OntoClass]
+    classes = get_classes_list(store)
+    complement = [item for item in classes if item not in class_group]
+    return complement
+
+def handle_union(blanknode, store):
+    union_list = extract_rdf_list(blanknode, store)
+    return union_list
+
+def handle_intersection(blanknode, store):
+    pass
+
+def pop_blank(blanknode : BlankNode, store) -> list:
+    blank_quads = list(store.quads_for_pattern(blanknode, None, None, None))
+    popped = None
+    op_type = None
+    match blank_quads[0].predicate:
+        case OWL.unionOf:                                   ## NOTE: stored as list
+            union_blank = blank_quads[0].object
+            popped = extract_rdf_list(union_blank, store)
+            op_type = OWL.unionOf
+        case OWL.intersectionOf:                            ## NOTE: stored as list 
+            intersection_blank = blank_quads[0].object
+            popped = extract_rdf_list(intersection_blank, store)
+            op_type = OWL.intersectionOf
+        case OWL.complementOf:                              ## NOTE: points to class
+            popped = [blank_quads[0].object]
+            op_type = OWL.complementOf
+        case _:
+            raise NotImplemented(type )
+    return popped, op_type
+
+
+
+
