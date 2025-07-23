@@ -121,5 +121,10 @@ def pop_blank(blanknode : BlankNode, store) -> list:
     return popped, op_type
 
 
-
+def get_dom_ran(poppable: NamedNode | BlankNode, store : Store):
+    if isinstance(poppable, NamedNode):
+        all_in_pop = get_subclasses(poppable) + [poppable]
+        return all_in_pop
+    if isinstance(poppable, BlankNode):
+        return poppable
 

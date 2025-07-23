@@ -56,16 +56,18 @@ class ComplexClass:
     def tree(self) -> nx.DiGraph:
         graph = nx.DiGraph()
         blanknode = [self.blank]
-        graph.add_node(self.blank.value)
+        graph.add_node(self.blank)
         while blanknode:
             current = blanknode.pop()
-            graph.remove_node(current.value)
+            graph.remove_node(current)
             popped, op_type = pop_blank(current, self.store)
             graph.add_node(op_type)
             for p in popped:
                 if type(p) == NamedNode:
-                    graph.add_node(p.value)
+                    graph.add_node(p)
+                    graph.add_edge(p, current)
                 if type(p) == BlankNode:
                     blanknode.append(p)
-                    graph.add_node(p.value)
+                    graph.add_node(p)
+                    graph.add_edge(p,current)
         return graph
