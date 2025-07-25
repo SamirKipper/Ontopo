@@ -33,7 +33,23 @@ def format_chroma_results(results) -> dict:
         })
     return formatted_results
     
-##* CLASSES
+def format_chroma_results(results):
+    """formats the chroma results to a dictionary for each result
+
+    Args:
+        results (_type_): results froma chroma query
+
+    Returns:
+        list of dictionaries: each dictionary in the list contains key value pairs of the query results
+    """
+    formatted_results = []
+    for i in range(len(results["ids"][0])):  
+        formatted_results.append({
+            "id": results["ids"][0][i],
+            "document": results["documents"][0][i],
+            "distance": results["distances"][0][i]
+        })
+    return formatted_results
 
 
 

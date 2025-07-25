@@ -6,7 +6,11 @@ import time
 from node2vec import Node2Vec
 from node2vec.edges import HadamardEmbedder
 from concurrent.futures import ThreadPoolExecutor
-from utils import get_dom_ran
+
+from Nodes import *
+from Edges import *
+from utils import get_dom_ran, format_chroma_results
+
 
 
 
@@ -243,5 +247,10 @@ if __name__ == "__main__":
     Client = chromadb.Client()
     label_collection = Client.get_or_create_collection(name="labels")
     structure_collection = Client.get_or_create_collection(name = "Structure")
+    
     embed_ontology(store, label_collection, structure_collection)
     print(f"total runtime: {time.time()-start_time}")
+    results = label_collection.query(query_texts = ["time"], n_results = 3)
+    formatted = format_chroma_results(results)
+    for f in formatted:
+        print(f)
