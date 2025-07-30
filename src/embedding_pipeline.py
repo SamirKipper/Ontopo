@@ -160,7 +160,6 @@ def set_prop_dom_ran(props: dict, store: Store)->tuple:
             
     return props
 
-
 def create_core_graph(classes:list) -> nx.DiGraph:
     start_time = time.time()
     graph = nx.DiGraph()
@@ -176,7 +175,6 @@ def create_core_graph(classes:list) -> nx.DiGraph:
             })
             for parent in parents
         ])
-
     print(f"core graph creation : {time.time()-start_time}")
     return graph
 

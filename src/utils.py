@@ -2,6 +2,8 @@
 import re
 from pyoxigraph import *
 import networkx as nx
+from typing import Generator
+
 from OWL import OWL
 from RDF import RDF
 from RDFS import RDFS
@@ -22,20 +24,10 @@ def preprocess_pascalCamel(text: str) -> str:
     result = " ".join(l for l in list)
     result = result.strip()
     return result
-
-def format_chroma_results(results) -> dict:
-    formatted_results = []
-    for i in range(len(results["ids"][0])):  
-        formatted_results.append({
-            "id": results["ids"][0][i],
-            "document": results["documents"][0][i],
-            "distance": results["distances"][0][i]
-        })
-    return formatted_results
     
-def format_chroma_results(results):
+def format_chroma_results(results) -> list:
     """formats the chroma results to a dictionary for each result
-
+    
     Args:
         results (_type_): results froma chroma query
 
@@ -71,23 +63,15 @@ def extract_rdf_list( list_node, store: Store,) -> list:
                 break
             current = rest_quads[0].object
         return items
+
+def get_subclasses(OntoClass : NamedNode, store:Store) -> Generator:
+    return (c.subject for c in store.quads_for_pattern(None, RDFS.subClassOf, OntoClass, None) if isinstance(c,NamedNode))
     
-    
-def get_subclasses(OntoClass : NamedNode, store:Store) -> list:
-    results = list(store.quads_for_pattern(None, RDFS.subClassOf, OntoClass, None))
-    subclasses = []
-    for r in results:
-        if isinstance(r.subject, NamedNode):
-            subclasses.append(r.subject)
-        else:
-            pass
-    return subclasses
-    
+
 def get_descendents(OntoClass:NamedNode, store:Store) -> list:
     subclasses = get_subclasses(OntoClass, store)
-    results = None
+    results = []
     if subclasses:
-        results = []
         queue = subclasses
         while queue:
             current = queue.pop()
@@ -101,6 +85,9 @@ def get_classes_list(store:Store) -> list:
     quads = store.quads_for_pattern(None, RDF.type, OWL.Class, None)
     classes = [q.subject for q in quads if type(q.subject) == NamedNode]
     return classes
+
+def get_all_classes(store):
+    return (q.subject for q in store.quads_for_pattern(None, RDF.type, OWL.Class, None))
 
 def get_complement(OntoClass : NamedNode, store : Store) -> list:
     desc = get_descendents(OntoClass, store)
@@ -132,15 +119,16 @@ def pop_blank(blanknode : BlankNode, store) -> list:
         case OWL.complementOf:                              ## NOTE: points to class
             popped = [blank_quads[0].object]
             op_type = OWL.complementOf
+        case OWL.Restriction:
+            return blank_quads, OWL.Restriction
         case _:
-            raise NotImplemented(type )
+            return list(blank_quads), None
     return popped, op_type
 
 
 def get_dom_ran(poppable: NamedNode | BlankNode, store : Store):
     if isinstance(poppable, NamedNode):
-        all_in_pop = get_subclasses(poppable) + [poppable]
-        return all_in_pop
+        return get_descendents(poppable) + [poppable]
     if isinstance(poppable, BlankNode):
-        return poppable
+        return pop_blank(poppable, store)
 
