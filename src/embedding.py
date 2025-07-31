@@ -5,6 +5,8 @@ from pyoxigraph import *
 import chromadb
 import networkx as nx
 
+from OWL import OWL
+from RDFS import RDFS
 from Nodes import *
 from Edges import *
 from utils import *
@@ -31,14 +33,46 @@ def get_classes(store: Store):
                     raise NotImplementedError
     return classes
 
-def create_core_graph(classes: list):
+def create_hierarchy_graph(named: list):
     graph = nx.DiGraph()
-    for c in classes:
-        graph.add_node(c)
-    for c in classes:
-        if isinstance(c, NamedClass):
-            for s in c.subclasses:
-                pass
+    # for n in named:
+    #     graph.add_node(n, label = n.RDFSlabel )
+    graph.add_nodes_from(named)
+    for n in named:
+        subclasses = list(n.subClasses)
+        if subclasses != []:
+            for s in subclasses:
+                attrs = {
+                        "type": RDFS.subClassOf,
+                        "label": "sub class of"
+                        }
+                graph.add_edge(s, n, **attrs)
+    return graph
+
+def create_core_graph(hierarchy: nx.DiGraph, blanks : list) -> nx.DiGraph:
+    graph = hierarchy
+    graph.add_nodes_from(blanks)
+    for b in blanks:
+        if isinstance(b, UnionClass):
+            edge_data = {
+                "type" : OWL.unionOf,
+                "label" : "in union"
+            }
+            for c in b.classes:
+                graph.add_edge(c, b, **edge_data)
+        if isinstance(b, NegationClass):
+            edge_data = {
+                "type" : OWL.complementOf,
+                "label" : "not in"
+            }
+            graph.add_edge(b.onClass, b, **edge_data)
+        if isinstance(b, IntersectionClass):
+            edge_data = {
+                "type" : OWL.intersectionOf,
+                "label" : "intersection of"
+            }
+            for c in b.classes:
+                graph.add_edge(c, b, **edge_data)
     return graph
 
 
@@ -51,4 +85,4 @@ if __name__ == "__main__":
     store.load(path = "/home/kipp_sa/github/EmbedAlign/test/bfo-core.owl", format = RdfFormat.RDF_XML)
     Client = chromadb.Client()
     label_collection = Client.get_or_create_collection(name="labels")
-    structure_collection = Client.get_or_create_collection(name = "Structure")
+    structure_collection = Client.get_or_create_collection(name = "structure")

@@ -8,7 +8,10 @@ from OWL import OWL
 #*                Classtypes                     #  
 ##################################################*
 
+
 class NamedClass:
+    """The Class for all OWL or RDF Classes with an Explicit IRI
+    """
     def __init__(
         self,
         iri : str,
@@ -22,19 +25,32 @@ class NamedClass:
     
     @property
     def RDFSlabel(self):
+        """The attribute linking the class to its rdfs:label
+
+        Returns:
+            list: the list of rdfs:labels given to the class
+        """
         quads = self.store.quads_for_pattern(self._storeNode, RDFS.label, None, None)
         labels = [q.object.value for q in quads]
         return labels
     
     @property
     def subClasses(self):
-        return ( NamedClass(c.value, self.store) for c in get_subclasses(self._storeNode, self.store) )
+        quads = self.store.quads_for_pattern(None, RDFS.subClassOf, self._storeNode, None)
+        return ( NamedClass(c.subject.value, self.store) for c in quads)
+    
+    @property
+    def descendents(self):
+        desc = get_descendents(self._storeNode, self.store)
+        return (NamedClass(s, self.store) for s in desc)
     
     def __hash__(self):
         return hash(self.iri)
     
     def __repr__(self):
-        return str(self.iri)
+        return "'" + str(self.RDFSlabel[0]) + "'"
+    def __eq__(self, other):
+        return isinstance(other,NamedClass) and self.iri == other.iri
 
 
 class ComplexClass:
@@ -64,7 +80,9 @@ class ComplexClass:
                     graph.add_node(p)
                     graph.add_edge(p,current)
         return graph
-
+    
+    def __eq__(self, other):
+        return self.blank == other.blank
 
 class IntersectionClass(ComplexClass):
     def __init__(
@@ -138,7 +156,7 @@ class NegationClass(ComplexClass):
     
     @property
     def entails(self):
-        classes = get_complement(self.node)
+        classes = get_complement(self.onClass)
         return classes
     
     def __hash__(self):
@@ -171,8 +189,33 @@ class SOME(RestrictionClass):
     
     def __repr__(self):
         string = str(self.onProperty) + " SOME "
-        
+        return string
 
+
+class ONLY(RestrictionClass):
+    def __init__(
+        self, 
+        blank, 
+        onProperty,
+        ):
+        super().__init__(blank, onProperty)
+    
+    def __repr__(self):
+        string = str(self.onProperty) + " ONLY "
+        return string
+
+
+class VALUE(RestrictionClass):
+    def __init__(
+        self, 
+        blank, 
+        onProperty,
+        ):
+        super().__init__(blank, onProperty)
+    
+    def __repr__(self):
+        string = str(self.onProperty) + " VALUE "
+        return string
 
 
 #######################################################*
