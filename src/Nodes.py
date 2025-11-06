@@ -349,11 +349,10 @@ class UnionClass(ComplexClass):
 class NegationClass(ComplexClass):
     def __init__(
                 self, 
-                blank : NamedNode,
+                blank : BlankNode,
                 store : Store
                 ):
-        self.blank = blank
-        self.store = store
+        super().__init__(blank, store)
         
         
     @property
