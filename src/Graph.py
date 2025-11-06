@@ -6,6 +6,8 @@ from node2vec import Node2Vec
 from node2vec.edges import HadamardEmbedder
 from concurrent.futures import ThreadPoolExecutor
 import traceback
+import chromadb
+import os
 
 
 from Nodes import *

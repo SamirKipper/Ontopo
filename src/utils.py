@@ -2,15 +2,13 @@ import json
 import numpy as np
 from pyoxigraph import BlankNode, Store, NamedNode, Quad
 from typing import List
-import chromadb
 import networkx as nx
 from typing import Generator
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
-import os
 import subprocess
 import re
-
+import matplotlib.pyplot as plt
+from adjustText import adjust_text 
 
 from OWL import OWL
 from RDF import RDF
@@ -18,6 +16,35 @@ from RDFS import RDFS
 
 repo_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
 ).stdout.strip()
+
+
+def plot_hierarchy(graph):
+    sinks = [n for n, d in graph.out_degree() if d == 0]
+    if len(sinks) != 1:
+        raise ValueError("Graph must have exactly one sink node")
+    sink = sinks[0]
+
+    G_rev = graph.reverse()
+    pos = hierarchy_pos(G_rev, root=sink)
+
+    # Scale positions to increase spacing
+    scale_factor = 2  # tweak this as needed
+    pos = {k: (v[0]*scale_factor, v[1]*scale_factor) for k,v in pos.items()}
+
+    plt.figure(figsize=(12, 8))
+    nx.draw_networkx_nodes(graph, pos, node_size=700, node_color='lightblue')
+    nx.draw_networkx_edges(graph, pos, arrows=True)
+
+    # Draw labels separately and use adjustText to prevent overlaps
+    texts = []
+    for node, (x, y) in pos.items():
+        texts.append(plt.text(x, y, str(node), fontsize=10, ha='center', va='center'))
+
+    adjust_text(texts, arrowprops=dict(arrowstyle='-', color='gray'))
+
+    plt.axis('off')
+    plt.show()
+
 
 
 

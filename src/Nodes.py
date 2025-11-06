@@ -1,6 +1,6 @@
 from pyoxigraph import NamedNode, BlankNode, Store, Literal
-from typing import Union, List
 from pprint import pprint
+import chromadb
 
 from OWL import OWL
 from utils import *
