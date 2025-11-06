@@ -1,0 +1,239 @@
+import networkx as nx
+from functools import cached_property
+from pyoxigraph import Store, RdfFormat
+from collections.abc import Iterator
+from node2vec import Node2Vec
+from node2vec.edges import HadamardEmbedder
+from concurrent.futures import ThreadPoolExecutor
+import traceback
+
+
+from Nodes import *
+from Edges import *
+
+
+def return_formatter(file: str) -> RdfFormat:
+    file_extension = os.path.splitext(file)[1].lower()
+    match file_extension:
+        case ".ttl":  
+            formatter = RdfFormat.TURTLE
+        case ".rdf":  
+            formatter = RdfFormat.RDF_XML
+        case ".n3":  
+            formatter = RdfFormat.N3
+        case ".nt":  
+            formatter = RdfFormat.N_TRIPLES
+        case ".jsonld":  
+            formatter = RdfFormat.JSON_LD
+        case ".trig":  
+            formatter = RdfFormat.TRIG
+        case ".nq":  
+            formatter = RdfFormat.N_QUADS
+        case ".xml":  
+            formatter = RdfFormat.RDF_XML
+        case ".owl":  
+            formatter = RdfFormat.RDF_XML
+        case _:
+            raise ValueError(f"Unsupported file format: {file_extension}")
+    return formatter
+
+
+
+
+class Ontology:
+    """
+    #### Overview
+    The baseclass for an ontology.
+    it gives you all bare necessities to deal with the classes etc.
+    
+    #### properties:
+    - store: the store, that the d4c is stored in
+    - classes: iterator over all classes of the ontology, including complex classes, loads lazily
+    - named_classes: iterator over all classes of the ontology with an iri
+    - object_properties: iterator over all object properties in the ontology
+    - datatype_properties: iterator over all datatype properties in the ontology
+    
+    #### methods
+    - embed_labels: iterates over the ressources, creates an embedding of the labels if given and stores them in the collection
+    - embed_structure: uses the node2vec framework to embed the ontology
+    - embed_structure: calls embed_labels and embed_structure in a thread
+    
+    #### example
+    ```python
+    store = Store('path/to/file')
+    d4c = D4C( store = store)
+    for c in d4c.named_classes:
+        print(c.rdfsLabel)
+    ```
+    
+    """
+    
+    @classmethod
+    def load(cls, file : str) -> "Ontology":
+        """loads the ontology from the given file path 
+
+        Args:
+            file (str): a file path
+
+        Returns:
+            Ontology: the Ontology
+        """
+        store = Store()
+        parser = return_formatter(file)
+        store.load(path = file, format=parser)
+        return Ontology(file, store)
+        
+    
+    def __init__(self , file : str, store : Store):
+        self.file = file
+        self.store = store
+    
+    @property
+    def classes(self) -> Iterator[NamedClass | UnionClass | NegationClass | IntersectionClass]:
+        """
+        ### Overview
+        the property accesses the internal database and returns all types of 
+        classes from the d4c ontology, including complex classes
+        It loads the classes lazily.
+        
+        ### Returns:
+        Iterator[NamedClass | UnionClass | NegationClass | IntersectionClass]: _description_
+        """
+        quads = self.store.quads_for_pattern(None, RDF.type, OWL.Class, None)
+        classes = (q.subject for q in quads)
+        for c in classes:
+            inst = map_class_type(c, self.store)
+            if inst:
+                yield inst
+            else: 
+                quads = self.store.quads_for_pattern(c, None, None, None)
+                print("-----------------------------")
+                for q in quads:
+                    print(q)
+    
+    @property
+    def named_classes(self):
+        """returns all classes, that are contained in the Ontology, that have an IRI
+
+        Returns:
+            Generator: A Generator over all NamedClasses
+        """
+        classes = self.store.quads_for_pattern(None, RDF.type, OWL.Class, None)
+        return (NamedClass(iri = c.subject.value, store = self.store) for c in classes if isinstance(c.subject, NamedNode))
+    
+    @property
+    def object_properties(self):
+        props = self.store.quads_for_pattern(None, RDF.type, OWL.ObjectProperty, None)
+        return (ObjectProperty(p.subject.value, store= self.store) for p in props if isinstance(p.subject, NamedNode))
+    
+    @property
+    def datatype_properties(self):
+        props = self.store.quads_for_pattern(None, RDF.type, OWL.DatatypeProperty, None)
+        return (DatatypeProperty(p.subject.value, store = self.store) for p in props if isinstance(p.subject, NamedNode))
+    
+    @property
+    def structure(self) -> nx.DiGraph:
+        ##* CORE GRAPH CREATION
+        graph = nx.DiGraph()
+        graph.add_nodes_from(self.classes)
+        for c in self.classes:
+            if isinstance(c, NamedClass):
+                data = {"type" : "sub Class"}
+                subclasses = c.subClasses
+                zipped = zip([c], subclasses)
+                graph.add_edges_from(zipped, **data)
+            elif isinstance(c, UnionClass):
+                data = {"type" : "union of"}
+                zipped = zip([c], c.onClasses)
+                graph.add_edges_from(zipped, **data)
+            elif isinstance(c, IntersectionClass):
+                data = {"type" : "intersection of"}
+                zipped = zip([c], c.onClasses)
+                graph.add_edges_from(zipped, **data)
+            elif isinstance(c, NegationClass):
+                data = {"type" : "complement of"}
+                graph.add_edge(c, c.onClass, **data)
+        ##* ADDING EDGES FOR OBJECT PROPERTIES
+        for p in self.object_properties:
+            dom = list(p.domain)
+            ran = list(p.range)
+            if dom == []: 
+                dom = [OWL.Thing]
+            if ran == []:
+                ran = [OWL.Thing]
+            zipped = zip(dom, ran)
+            data = {
+                "type" : "object property",
+                "iri" : p.iri,
+            }
+            graph.add_edges_from(zipped, **data)
+        return graph
+            
+    def embed_labels(self, label_collection : chromadb.Collection):
+        for c in self.named_classes:
+            try:
+                label = str(c)
+                iri = c.iri
+                ressource_type = "object property"
+                label_collection.add(
+                    ids = [iri],
+                    documents = [label],
+                    metadatas={"type" : ressource_type}
+                )
+            except Exception as e:
+                raise e
+        for p in self.object_properties:
+            try:
+                label = str(c)
+                iri = c.iri
+                ressource_type = "class"
+                label_collection.add(
+                    ids = [iri],
+                    documents = [label],
+                    metadatas={"type" : "class"}
+                )
+            except Exception as e:
+                raise e
+    
+    def embed_structure(self, structure_collection : chromadb.Collection):
+        if type(self.structure) == None:
+                raise TypeError("ontology graph is none type")
+        else:
+            node2vec = Node2Vec(self.structure, dimensions=64, walk_length=5, num_walks=200, workers=1)
+            model = node2vec.fit(window=10, min_count=1, batch_words=4)
+            graph = self.structure
+            print(type(graph))
+            node_embeddings = {iri: model.wv[iri] for iri in graph.nodes}
+            edges_embs = HadamardEmbedder(keyed_vectors=model.wv)
+            edges_kv = edges_embs.as_keyed_vectors()
+        return node_embeddings, edges_kv
+    
+    
+    def embed_ontology(self, label_collection : chromadb.Collection, structure_collection : chromadb.Collection):
+        try:
+            if not self.structure:
+                raise TypeError("ontology graph is none type")
+            with ThreadPoolExecutor(max_workers = 4) as exec:
+                f1 = exec.submit(self.embed_labels, label_collection)
+                f2 = exec.submit(self.embed_structure, structure_collection)
+                result = f2.result()
+                yield "finished graph embedding"
+                ## add graph structure
+                ids = list(result.keys())
+                vectors = [result[node_id] for node_id in ids]
+                documents = [node_id for node_id in ids]
+                metadatas = [{"type": "graph_node", "node_id": node_id} for node_id in ids]
+                coll = structure_collection
+                coll.add(
+                ids=ids,
+                embeddings=vectors,
+                documents=documents,
+                metadatas=metadatas
+                )
+                yield "added graph structure to chromadb"
+        except Exception as e:
+            traceback.print_exc()
+            raise ValueError(f"Nonetypeerror : {str(e)}")
+        
+    def __getattr__(self, value : str):
+        pass
