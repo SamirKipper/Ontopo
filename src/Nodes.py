@@ -1,5 +1,4 @@
 from pyoxigraph import NamedNode, BlankNode, Store, Literal
-from pprint import pprint
 import chromadb
 
 from OWL import OWL
@@ -18,7 +17,6 @@ english_tags = ["en", "en-us", "en-gb", "en-au", "en-ca", "en-nz"]
 def __map_restriction_type(blank, dictio : dict, store : Store):
     if OWL.minCardinality in dictio.keys():
         print("------------------------------------")
-        pprint(dictio)
     elif OWL.minQualifiedCardinality in dictio.keys():
         return MinQualifiedCardinality(
             store = store,
@@ -28,7 +26,6 @@ def __map_restriction_type(blank, dictio : dict, store : Store):
             )
     elif OWL.maxCardinality in dictio.keys():
         print("------------------------------------")
-        pprint(dictio)
     elif OWL.maxQualifiedCardinality in dictio.keys():
         return MaxQualifiedCardinality(
             store = store,

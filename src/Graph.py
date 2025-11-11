@@ -2,8 +2,6 @@ import networkx as nx
 from functools import cached_property
 from pyoxigraph import Store, RdfFormat
 from collections.abc import Iterator
-from node2vec import Node2Vec
-from node2vec.edges import HadamardEmbedder
 from concurrent.futures import ThreadPoolExecutor
 import traceback
 import chromadb
@@ -170,72 +168,3 @@ class Ontology:
             }
             graph.add_edges_from(zipped, **data)
         return graph
-            
-    def embed_labels(self, label_collection : chromadb.Collection):
-        for c in self.named_classes:
-            try:
-                label = str(c)
-                iri = c.iri
-                ressource_type = "object property"
-                label_collection.add(
-                    ids = [iri],
-                    documents = [label],
-                    metadatas={"type" : ressource_type}
-                )
-            except Exception as e:
-                raise e
-        for p in self.object_properties:
-            try:
-                label = str(c)
-                iri = c.iri
-                ressource_type = "class"
-                label_collection.add(
-                    ids = [iri],
-                    documents = [label],
-                    metadatas={"type" : "class"}
-                )
-            except Exception as e:
-                raise e
-    
-    def embed_structure(self, structure_collection : chromadb.Collection):
-        if type(self.structure) == None:
-                raise TypeError("ontology graph is none type")
-        else:
-            node2vec = Node2Vec(self.structure, dimensions=64, walk_length=5, num_walks=200, workers=1)
-            model = node2vec.fit(window=10, min_count=1, batch_words=4)
-            graph = self.structure
-            print(type(graph))
-            node_embeddings = {iri: model.wv[iri] for iri in graph.nodes}
-            edges_embs = HadamardEmbedder(keyed_vectors=model.wv)
-            edges_kv = edges_embs.as_keyed_vectors()
-        return node_embeddings, edges_kv
-    
-    
-    def embed_ontology(self, label_collection : chromadb.Collection, structure_collection : chromadb.Collection):
-        try:
-            if not self.structure:
-                raise TypeError("ontology graph is none type")
-            with ThreadPoolExecutor(max_workers = 4) as exec:
-                f1 = exec.submit(self.embed_labels, label_collection)
-                f2 = exec.submit(self.embed_structure, structure_collection)
-                result = f2.result()
-                yield "finished graph embedding"
-                ## add graph structure
-                ids = list(result.keys())
-                vectors = [result[node_id] for node_id in ids]
-                documents = [node_id for node_id in ids]
-                metadatas = [{"type": "graph_node", "node_id": node_id} for node_id in ids]
-                coll = structure_collection
-                coll.add(
-                ids=ids,
-                embeddings=vectors,
-                documents=documents,
-                metadatas=metadatas
-                )
-                yield "added graph structure to chromadb"
-        except Exception as e:
-            traceback.print_exc()
-            raise ValueError(f"Nonetypeerror : {str(e)}")
-        
-    def __getattr__(self, value : str):
-        pass
