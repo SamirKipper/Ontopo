@@ -208,14 +208,6 @@ class NamedClass:
         except Exception as l:
             raise ValueError("no label given")
     
-    def serialize(self, x : float, y : float, it : int):
-        dictio = {
-            "id" : "c" + str(it),
-            "position" : {"x": x ,"y" : y},
-            "data" : {"iri" : self.iri , "label" : str(self)} 
-        }
-        return dictio
-    
     def __eq__(self, other):
         return isinstance(other,NamedClass) and self.iri == other.iri
 
@@ -248,14 +240,6 @@ class ComplexClass:
                     graph.add_node(p)
                     graph.add_edge(p,current)
         return graph
-    
-    def serialize(self, x : float, y : float, it : int):
-        dictio = {
-            "id" : "c" + str(it),
-            "position" : {"x": x ,"y" : y},
-            "data" : {"iri" : self.blank.value , "label" : str(self)} 
-        }
-        return dictio
     
     def __hash__(self):
         return hash(self.blank)
@@ -298,8 +282,8 @@ class IntersectionClass(ComplexClass):
     def __hash__(self):
         return hash(self.blank)
     
-    # def __eq__(self, other):
-    #     return self.blank == other.blank
+    def __eq__(self, other):
+        return set(list(self.onClasses)) == set(list(other.onClasses))
     
     def __str__(self):
         string = "(" + ' AND '.join(str(node) for node in self.onClasses) + ")"
@@ -338,8 +322,8 @@ class UnionClass(ComplexClass):
     def __hash__(self):
         return hash(self.blank)    
     
-    # def __eq__(self, other):
-    #     return self.blank == other.blank
+    def __eq__(self, other):
+        set(list(self.onClasses)) == set(list(other.onClasses))
     
     def __str__(self):
         string = "( "+' OR '.join(str(node) for node in self.onClasses) + ")"
@@ -375,8 +359,8 @@ class NegationClass(ComplexClass):
     def __hash__(self):
         return hash(self.blank)
     
-    # def __eq__(self, other):
-    #     return self.blank == other.blank
+    def __eq__(self, other):
+        return set(list(self.onClass)) == set(list(other.onClass))
     
     def __str__(self):
         return f"(NOT {self.onClass})"

@@ -63,8 +63,8 @@ class Ontology:
     #### example
     ```python
     store = Store('path/to/file')
-    d4c = D4C( store = store)
-    for c in d4c.named_classes:
+    ont = Ontology( store = store)
+    for c in ont.named_classes:
         print(c.rdfsLabel)
     ```
     
@@ -133,7 +133,7 @@ class Ontology:
         props = self.store.quads_for_pattern(None, RDF.type, OWL.DatatypeProperty, None)
         return (DatatypeProperty(p.subject.value, store = self.store) for p in props if isinstance(p.subject, NamedNode))
     
-    @property
+    @property ## NOTE: HANDLE LABEL ERRORS HERE, SO ITERATION OVER GRAPH IS SIMPLE
     def structure(self) -> nx.DiGraph:
         ##* CORE GRAPH CREATION
         graph = nx.DiGraph()
