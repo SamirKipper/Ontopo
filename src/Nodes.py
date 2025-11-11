@@ -106,7 +106,6 @@ def map_class_type(node : NamedNode | BlankNode, store : Store):
                         pass
                     else:
                         unimplemented += [op_type]
-                    raise ValueError(f"unkown type {op_type}")
             print(unimplemented)
         else: 
             raise ValueError("unknown type found")
