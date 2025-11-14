@@ -149,17 +149,14 @@ def pop_blank(blanknode : BlankNode, store : Store) -> tuple:
         try:
             match op_type:
                 ##* union, intersection complement
-                case OWL.unionOf:                                   ## NOTE: stored as list
+                case OWL.unionOf:                                   
                     union_blank = op_quad[0].object
-                    # print(f" in union case, quad: {union_blank}")
                     popped = extract_rdf_list(union_blank, store)
-                case OWL.intersectionOf:                            ## NOTE: stored as list 
+                case OWL.intersectionOf:                           
                     intersection_blank = op_quad[0].object
-                    # print(f" in intersection case, quad: {intersection_blank}")
                     popped = extract_rdf_list(intersection_blank, store)
-                case OWL.complementOf:                              ## NOTE: points to class
+                case OWL.complementOf:                             
                     popped = [op_quad[0].object]
-                    # print(f" in complement case, quad: {popped}")
                 ##* restrictions
                 case OWL.Restriction:
                     popped = dict()
@@ -171,18 +168,16 @@ def pop_blank(blanknode : BlankNode, store : Store) -> tuple:
                         popped[q.predicate] = q.object
                 case OWL.oneOf:
                     pass
-                case _:
-                    return list(blank_quads), op_type
         except Exception as e:
-            raise TypeError(f"some error: {str(e)}")
+            raise TypeError(f"operator type likely not handled: {op_type}, {str(e)}")
     elif len(op_types) == 0:
-        # print(len(blank_quads))
-        # for q in blank_quads:
-        #     print(q)
         raise ValueError(f"no operator type detected")
     else:
         raise ValueError("multiple operator types detected in one blank node")
-    return popped, op_type
+    if popped:
+        return popped, op_type
+    else:
+        raise ValueError(f"no list elements found for op type {op_type}")
 
 
 def get_subclasses(OntoClass : NamedNode, store:Store) -> Generator:

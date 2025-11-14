@@ -3,7 +3,7 @@ import torch.nn
 from chromadb import Documents, EmbeddingFunction, Embeddings
 from Graph import Ontology
 
-class OnTopology(EmbeddingFunction):
+class ClassTopology(EmbeddingFunction):
     
     def __init__(self, ontology : Ontology):
         self.ontology = ontology

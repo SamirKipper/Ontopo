@@ -25,7 +25,13 @@ def __map_restriction_type(blank, dictio : dict, store : Store):
             value = dictio[OWL.minQualifiedCardinality] 
             )
     elif OWL.maxCardinality in dictio.keys():
-        print("------------------------------------")
+        return MaxCardinality(
+            blank = blank,
+            store = store,
+            value = dictio[OWL.maxCardinality] ,
+            onProperty = dictio[OWL.onProperty],
+            onClass = dictio[OWL.onClass]
+            )
     elif OWL.maxQualifiedCardinality in dictio.keys():
         return MaxQualifiedCardinality(
             store = store,
@@ -51,6 +57,9 @@ def __map_restriction_type(blank, dictio : dict, store : Store):
             return Value(blank  = blank, store = store, onProperty = onProperty)
         else: 
             raise ValueError("on property missing in a Object Property restriction")
+    elif OWL.cardinality in dictio.keys():
+        onProperty = dictio[OWL.onProperty]
+        return Cardinality(blank = blank, store = store, onProperty = onProperty, value = dictio[OWL.cardinality])
     else:
         raise NotImplementedError(f"unkown restriction type in dictionary: {dictio}")
 
@@ -184,11 +193,22 @@ class NamedClass:
         desc = get_descendents(self.node, self.store)
         return (NamedClass(s, self.store) for s in desc)
     
+    def isSubclassOf(self, other) -> bool:
+        results = self.store.quads_for_pattern(self.node, RDFS.subClassOf, None, None)
+        r_list = [map_class_type(c) for c in results]
+        if other in results:
+            return True
+        else:
+            return False
+        
+    
+    def embed_label(self, label_collection : chromadb.Collection):
+        pass ### TODO: implement for initial central point
+    
     def __hash__(self):
         return hash(self.iri)
     
-    def embed_label(self, label_collection : chromadb.Collection):
-        pass ### TODO: implement
+    
     
     def __str__(self):
         try:
@@ -206,6 +226,9 @@ class NamedClass:
     
     def __eq__(self, other):
         return isinstance(other,NamedClass) and self.iri == other.iri
+    
+    
+        
 
 
 class ComplexClass:
@@ -294,7 +317,7 @@ class UnionClass(ComplexClass):
     ):
         self.blank = blank
         self.store = store
-        
+    
     @property
     def tree(self):
         graph = nx.DiGraph()
@@ -313,7 +336,7 @@ class UnionClass(ComplexClass):
             if m:
                 yield m
             else:
-                raise ValueError("union with none type")
+                raise ValueError(f"union with none type at {m} , mapped : {mapped}")
         
     def __hash__(self):
         return hash(self.blank)    
@@ -322,7 +345,7 @@ class UnionClass(ComplexClass):
         set(list(self.onClasses)) == set(list(other.onClasses))
     
     def __str__(self):
-        string = "( "+' OR '.join(str(node) for node in self.onClasses) + ")"
+        string = "("+' OR '.join(str(node) for node in self.onClasses) + ")"
         return string
 
 
@@ -454,7 +477,7 @@ class MinQualifiedCardinality(MinCardinality):
         self.onClass = onClass
     
     def __str__(self):
-        return f"( MIN {self.value} {self.onClass})"
+        return f"(MIN {self.value} {self.onClass})"
 
 class MaxCardinality(RestrictionClass):
     def __init__(
@@ -466,7 +489,7 @@ class MaxCardinality(RestrictionClass):
         super().__init__(blank = blank, store = store, onProperty = onProperty)
     
     def __str__(self):
-        return f"( MAX {self.value})"
+        return f"(MAX {self.value})"
 
 class MaxQualifiedCardinality(MaxCardinality):
     def __init__(
@@ -479,7 +502,7 @@ class MaxQualifiedCardinality(MaxCardinality):
         super().__init__(blank = blank, store = store, onProperty = onProperty)
         self.onClass = onClass
     def __str__(self):
-        return f"( MAX {self.value})"
+        return f"(MAX {self.value})"
 
 class MaxCardinality(RestrictionClass):
     def __init__(
@@ -508,10 +531,27 @@ class Exactly(RestrictionClass):
         onProperty
         ):
         super().__init__(blank = blank, store = store, onProperty = onProperty)
+        self.value = value
     
     def __str__(self):
-        return f" {self.onProperty} EXACTLY {self.value}"
+        return f"({self.onProperty} EXACTLY {self.value})"
 
+
+class Cardinality(RestrictionClass):
+    def __init__(
+        self,
+        blank : BlankNode, 
+        store : Store,
+        value : int,
+        onProperty
+        ):
+        super().__init__(blank = blank, store = store, onProperty = onProperty)
+        self.value = value
+    
+    def __str__(self):
+        return f"({self.onProperty} CARDINALITY {self.value})"
+    
+    
 
 class OneOf(ComplexClass, NamedClass):
     """
