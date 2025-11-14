@@ -11,15 +11,7 @@ from Nodes import *
 english_tags = ["en", "en-us", "en-gb", "en-au", "en-ca", "en-nz"]
 
 class OntoEdge(ABC):
-    def serialize(self, id, source, target, label, reconnectable):
-        data = {
-            "id" : id,
-            "source" : source,
-            "target" : target,
-            "label" : label,
-            "reconnectable" : "source"
-        }
-        
+    pass
 
 
 class ObjectProperty(OntoEdge):
