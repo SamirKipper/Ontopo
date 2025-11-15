@@ -1,13 +1,84 @@
-import json
-import numpy as np
 from pyoxigraph import BlankNode, Store, NamedNode, Quad
 from typing import List, Generator
-import networkx as nx
 import re
+from transformers import AutoTokenizer, AutoModel
+import torch
 
 from OWL import OWL
 from RDF import RDF
 from RDFS import RDFS
+
+### WORD EMBEDDING UTILS
+
+def embed_label(target_word, sentence):
+    model_name = "bert-base-uncased"
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    model = AutoModel.from_pretrained(model_name)
+
+    encoding = tokenizer(
+        sentence,
+        return_tensors="pt",
+        return_offsets_mapping=True
+    )
+    input_ids = encoding["input_ids"]
+    offsets = encoding["offset_mapping"][0]
+
+    target_positions = []
+    for idx, (start, end) in enumerate(offsets):
+        if sentence[start:end] == target_word:
+            target_positions.append(idx)
+
+
+    model_inputs = {k: v for k, v in encoding.items() if k in ["input_ids", "attention_mask", "token_type_ids"]}
+    with torch.no_grad():
+        outputs = model(**model_inputs)
+        hidden_states = outputs.last_hidden_state  
+
+    token_vectors = hidden_states[0, target_positions, :]
+    word_embedding = token_vectors.mean(dim=0)
+
+    return word_embedding
+
+def compute_mean_and_cov(embeddings: torch.Tensor):
+    mu = embeddings.mean(dim=0)  # (D,)
+    centered = embeddings - mu
+    # Covariance: (D x D)
+    cov = centered.T @ centered / (embeddings.shape[0] - 1)
+    return mu, cov
+
+def fit_pca(embeddings: torch.Tensor, n_components=2):
+    # Compute SVD
+    # embeddings centered
+    mu = embeddings.mean(dim=0)
+    X = embeddings - mu
+    U, S, Vt = torch.linalg.svd(X, full_matrices=False)
+    # Projection matrix: D x n_components
+    W = Vt[:n_components].T
+    return W
+
+def project_mean_and_cov(mu: torch.Tensor, cov: torch.Tensor, W: torch.Tensor):
+    mu_2d = W.T @ mu
+    cov_2d = W.T @ cov @ W
+    return mu_2d, cov_2d
+
+def covariance_to_ellipse_params(cov_2d: torch.Tensor, n_std=1.0):
+    # Eigen decomposition
+    eigvals, eigvecs = torch.linalg.eigh(cov_2d)
+    # Sort largest -> smallest
+    idx = torch.argsort(eigvals, descending=True)
+    eigvals = eigvals[idx]
+    eigvecs = eigvecs[:, idx]
+    width, height = 2 * n_std * torch.sqrt(eigvals)
+    angle = torch.atan2(eigvecs[1, 0], eigvecs[0, 0]) * (180.0 / torch.pi)
+    return width.item(), height.item(), angle.item()
+
+def get_center_and_cov(label, sentences):
+    embeddings = torch.stack([embed_label(label, s) for s in sentences]) 
+    mu, cov = compute_mean_and_cov(embeddings)
+    W = fit_pca(embeddings, n_components=2)
+    mu_2d, cov_2d = project_mean_and_cov(mu, cov, W)
+    return mu_2d, cov_2d
+
 
 
 def preprocess_pascalCase(pascal: str) -> str:
@@ -42,6 +113,8 @@ def format_chroma_results(results):
         })
     return formatted_results
 
+
+### RDF UTILS
 
 def extract_rdf_list(list_node : BlankNode, store: Store) -> list:
     """traverses an RDF list and returns the list elements

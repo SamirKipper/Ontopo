@@ -1,7 +1,7 @@
 import torch
 import torch.nn
 from chromadb import Documents, EmbeddingFunction, Embeddings
-from Graph import Ontology
+from Ontology import Ontology
 
 class ClassTopology(EmbeddingFunction):
     

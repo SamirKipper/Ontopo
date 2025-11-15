@@ -1,15 +1,9 @@
 import networkx as nx
-from functools import cached_property
 from pyoxigraph import Store, RdfFormat
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
-import traceback
-import chromadb
 import os
+from Ressources import *
 
-
-from Nodes import *
-from Edges import *
 
 
 def return_formatter(file: str) -> RdfFormat:
@@ -44,7 +38,6 @@ class Ontology:
     """
     #### Overview
     The baseclass for an ontology.
-    it gives you all bare necessities to deal with the classes etc.
     
     #### properties:
     - store: the store, that the d4c is stored in
@@ -168,3 +161,6 @@ class Ontology:
             }
             graph.add_edges_from(zipped, **data)
         return graph
+    
+    def topoligize(self):
+        pass

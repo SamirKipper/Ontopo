@@ -1,17 +1,14 @@
 from pyoxigraph import NamedNode, BlankNode, Store, Literal
 import chromadb
+from transformers import AutoTokenizer, AutoModel
+import networkx as nx
+from abc import ABC
 
 from OWL import OWL
 from utils import *
 
 
-
-
 english_tags = ["en", "en-us", "en-gb", "en-au", "en-ca", "en-nz"]
-
-
-
-
 
 
 def __map_restriction_type(blank, dictio : dict, store : Store):
@@ -202,8 +199,9 @@ class NamedClass:
             return False
         
     
-    def embed_label(self, label_collection : chromadb.Collection):
-        pass ### TODO: implement for initial central point
+    def get_initial_region(self):
+        label = str(self)
+        sentences = []
     
     def __hash__(self):
         return hash(self.iri)
@@ -262,9 +260,6 @@ class ComplexClass:
     
     def __hash__(self):
         return hash(self.blank)
-    
-    # def __eq__(self, other):
-    #     return self.blank == other.blank
 
 
 class IntersectionClass(ComplexClass):
@@ -607,3 +602,89 @@ class Individual:
         instance_of : NamedClass | ComplexClass | UnionClass | NegationClass | IntersectionClass):
         self.iri = iri
         self.instance_of = instance_of
+
+class OntoEdge(ABC):
+    pass
+
+
+class ObjectProperty(OntoEdge):
+    def __init__(
+        self,
+        iri : str,
+        store : Store
+    ):
+        self.iri = iri
+        self.store = store
+        self.node = NamedNode(self.iri)
+        
+    @property
+    def domain(self) -> NamedNode | BlankNode:
+        quads = self.store.quads_for_pattern(self.node, RDFS.domain, None, None)
+        dom = (map_class_type(q.object, store = self.store) for q in quads)
+        return dom
+    
+    @property
+    def range(self):
+        quads = self.store.quads_for_pattern(self.node, RDFS.range, None, None)
+        dom = (map_class_type(q.object, store = self.store) for q in quads)
+        return dom
+    
+    @property
+    def rdfsLabel(self):
+        """The attribute linking the class to its rdfs:label
+
+        Returns:
+            list: the list of rdfs:labels given to the class
+        """
+        quads = self.store.quads_for_pattern(self.node, RDFS.label, None, None)
+        labels = [q.object for q in quads]
+        return labels
+    
+    def __repr__(self):
+        if (self.rdfsLabel != None) and (len(self.rdfsLabel) > 0):
+            english_labels = [l.value for l in self.rdfsLabel if l.language in english_tags]
+            if len(english_labels) != 0:
+                return english_labels[0]
+            elif len(english_labels) == 0:
+                return f"{self.rdfsLabel[0].value}"
+                
+        else:
+            return self.iri
+
+
+class DatatypeProperty(OntoEdge):
+    def __init__(
+        self,
+        iri : str,
+        store : Store
+    ):
+        self.iri = iri
+        self.store = store
+        
+    @property
+    def rdfsLabel(self):
+        """The attribute linking the class to its rdfs:label
+
+        Returns:
+            list: the list of rdfs:labels given to the class
+        """
+        quads = self.store.quads_for_pattern(self._storeNode, RDFS.label, None, None)
+        labels = [q.object for q in quads]
+        return labels
+    
+    def __repr__(self):
+        if (self.rdfsLabel != None) and (len(self.rdfsLabel) > 0):
+            english_labels = [l.value for l in self.rdfsLabel if l.language in english_tags]
+            if len(english_labels) != 0:
+                return english_labels[0]
+            elif len(english_labels) == 0:
+                return f"{self.rdfsLabel[0].value}"
+        else:
+            return self.iri
+
+class AnnotationProperty(OntoEdge):
+    def __init__(
+        self,
+        iri : str,
+    ):
+        self.iri = iri
