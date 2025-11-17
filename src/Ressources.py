@@ -1,11 +1,10 @@
-from pyoxigraph import NamedNode, BlankNode, Store, Literal
+from pyoxigraph import QuerySolutions, QueryResultsFormat, NamedNode, BlankNode, Store, Literal, Variable
 import chromadb
-from transformers import AutoTokenizer, AutoModel
-import networkx as nx
 from abc import ABC
 
 from OWL import OWL
 from utils import *
+from decomposition import *
 
 
 english_tags = ["en", "en-us", "en-gb", "en-au", "en-ca", "en-nz"]
@@ -114,7 +113,7 @@ def map_class_type(node : NamedNode | BlankNode, store : Store):
                         unimplemented += [op_type]
             print(unimplemented)
         else: 
-            raise ValueError("unknown type found")
+            raise ValueError(f"unknown type found at {node} of type  {type(node)}")
     except Exception as e:
         raise ValueError(str(e))
 
@@ -178,8 +177,18 @@ class NamedClass:
         Returns:
             Generator: a generator over the instantiated classes
         """
-        quads = self.store.quads_for_pattern(None, RDFS.subClassOf, self._storeNode, None)
-        return ( NamedClass(c.subject.value, self.store) for c in quads)
+        quads = self.store.quads_for_pattern(None, RDFS.subClassOf, self.node, None)
+        return ( map_class_type(c.subject, self.store) for c in quads)
+    
+    @property
+    def subClassOf(self):
+        """ loads the subclasses of a class lazily
+
+        Returns:
+            Generator: a generator over the instantiated classes
+        """
+        quads = self.store.quads_for_pattern( self.node, RDFS.subClassOf, None, None)
+        return (map_class_type(c.object, self.store) for c in quads)
     
     @property
     def descendents(self):
@@ -190,18 +199,83 @@ class NamedClass:
         desc = get_descendents(self.node, self.store)
         return (NamedClass(s, self.store) for s in desc)
     
+    @property
+    def annotations(self):
+        
+        query = f"""
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        SELECT  ?p ?ann
+        WHERE{{
+            <{self.iri}> ?p ?ann.
+            ?p rdf:type owl:AnnotationProperty.    
+        }}
+        """
+        results : QuerySolutions = self.store.query(query)
+        anns = {}
+        for r in results:
+            p, ann = r
+            anns[p] = ann.value
+        return anns
+        
+    
     def isSubclassOf(self, other) -> bool:
+        """method, to check if the class is a subclass of another
+
+        Args:
+            other (NamedClass, ComplexClass, RestrictionClass): a class to check, if the class is the subclass of it
+
+        Returns:
+            bool: wether or not it is a subclass of other
+        """
         results = self.store.quads_for_pattern(self.node, RDFS.subClassOf, None, None)
         r_list = [map_class_type(c) for c in results]
-        if other in results:
+        if other in r_list:
             return True
         else:
             return False
-        
     
     def get_initial_region(self):
         label = str(self)
         sentences = []
+        
+        subs = list(self.subClasses)
+        if subs != []:
+            sentence = f"{str(self)} has the subclasses"
+            length = len(subs)
+            if length >1:
+                for i in range(length):
+                    if i+1 != length: 
+                        sentence += f" {str(subs[i])},"
+                    else:
+                        sentence += f" and {str(subs[i])}."
+                sentences.append(sentence)
+            else:
+                sentence = f"{str(self)} has the subclasses {subs[0]}"
+                sentences.append(sentence)
+        else:
+            sentences.append(f"{label} has no subclasses")
+        pars = list(self.subClassOf)
+        if pars != []:
+            sentence = f"{str(self)} is a subclass of "
+            length = len(pars)
+            for i in range(length):
+                if i+1 != length: 
+                    sentence += f" {str(pars[i])},"
+                else:
+                    sentence += f" and {str(pars[i])}."
+            sentences.append(sentence)
+        else:
+            sentences.append(f"{label} has no parent classes")
+        it = 0
+        
+        print(f"label:  {label}, sentences : {sentences}") 
+        try:
+            center, cov = get_center_and_cov(label, sentences)
+        except Exception as e:
+            raise e
+        print(center, cov)
+        return center, cov
     
     def __hash__(self):
         return hash(self.iri)
@@ -238,26 +312,6 @@ class ComplexClass:
         self.blank = blank
         self.store = store
     
-    @property
-    def tree(self) -> nx.DiGraph:
-        graph = nx.DiGraph()
-        blanknode = [self.blank]
-        graph.add_node(self.blank)
-        while blanknode:
-            current = blanknode.pop()
-            graph.remove_node(current)
-            popped, op_type = pop_blank(current, self.store)
-            graph.add_node(op_type)
-            for p in popped:
-                if type(p) == NamedNode:
-                    graph.add_node(p)
-                    graph.add_edge(p, current)
-                if type(p) == BlankNode:
-                    blanknode.append(p)
-                    graph.add_node(p)
-                    graph.add_edge(p,current)
-        return graph
-    
     def __hash__(self):
         return hash(self.blank)
 
@@ -272,16 +326,6 @@ class IntersectionClass(ComplexClass):
         self.store = store
     
     @property
-    def tree(self):
-        graph = nx.DiGraph()
-        popped, op_type = pop_blank(self.blank, self.store)
-        graph.add_node(self)
-        for p in popped:
-            graph.add_node(p)
-            graph.add_edge(op_type,p, value = OWL.intersectionOf)
-        return graph
-    
-    @property
     def onClasses(self):
         popped, _ = pop_blank(self.blank, self.store)
         mapped = (map_class_type(p, self.store) for p in popped)
@@ -292,9 +336,6 @@ class IntersectionClass(ComplexClass):
                 for p in popped:
                     print(p)
                 raise ValueError("intersection with none type")
-    
-    def __hash__(self):
-        return hash(self.blank)
     
     def __eq__(self, other):
         return set(list(self.onClasses)) == set(list(other.onClasses))
@@ -312,17 +353,7 @@ class UnionClass(ComplexClass):
     ):
         self.blank = blank
         self.store = store
-    
-    @property
-    def tree(self):
-        graph = nx.DiGraph()
-        popped, op_type = pop_blank(self.blank, self.store)
-        graph.add_node(op_type)
-        for p in popped:
-            graph.add_node(p)
-            graph.add_edge(op_type,p, value = OWL.unionOf)
-        return graph
-    
+
     @property
     def onClasses(self):
         popped, _ = pop_blank(self.blank, self.store)
@@ -331,10 +362,7 @@ class UnionClass(ComplexClass):
             if m:
                 yield m
             else:
-                raise ValueError(f"union with none type at {m} , mapped : {mapped}")
-        
-    def __hash__(self):
-        return hash(self.blank)    
+                raise ValueError(f"union with none type at {m} , mapped : {mapped}")  
     
     def __eq__(self, other):
         set(list(self.onClasses)) == set(list(other.onClasses))
@@ -369,9 +397,6 @@ class NegationClass(ComplexClass):
     def entails(self):
         classes = get_complement(self.onClass)
         return classes
-    
-    def __hash__(self):
-        return hash(self.blank)
     
     def __eq__(self, other):
         return set(list(self.onClass)) == set(list(other.onClass))
@@ -603,11 +628,16 @@ class Individual:
         self.iri = iri
         self.instance_of = instance_of
 
+
+
+#######################################################*
+#*                   PROPS                            #*
+#*#####################################################*
+
 class OntoEdge(ABC):
     pass
-
-
 class ObjectProperty(OntoEdge):
+
     def __init__(
         self,
         iri : str,
