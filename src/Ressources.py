@@ -267,14 +267,12 @@ class NamedClass:
             sentences.append(sentence)
         else:
             sentences.append(f"{label} has no parent classes")
-        it = 0
-        
-        print(f"label:  {label}, sentences : {sentences}") 
+        for a in self.annotations:
+            sentences.append(f"{str(self)} has the annotation {str(a)}")
         try:
             center, cov = get_center_and_cov(label, sentences)
         except Exception as e:
             raise e
-        print(center, cov)
         return center, cov
     
     def __hash__(self):
@@ -670,7 +668,7 @@ class ObjectProperty(OntoEdge):
         labels = [q.object for q in quads]
         return labels
     
-    def __repr__(self):
+    def __str__(self):
         if (self.rdfsLabel != None) and (len(self.rdfsLabel) > 0):
             english_labels = [l.value for l in self.rdfsLabel if l.language in english_tags]
             if len(english_labels) != 0:
@@ -702,7 +700,7 @@ class DatatypeProperty(OntoEdge):
         labels = [q.object for q in quads]
         return labels
     
-    def __repr__(self):
+    def __str__(self):
         if (self.rdfsLabel != None) and (len(self.rdfsLabel) > 0):
             english_labels = [l.value for l in self.rdfsLabel if l.language in english_tags]
             if len(english_labels) != 0:
