@@ -9,6 +9,25 @@ from decomposition import *
 
 english_tags = ["en", "en-us", "en-gb", "en-au", "en-ca", "en-nz"]
 
+def map_property_type(node : NamedNode | BlankNode, store : Store):
+    if isinstance(node, NamedNode):
+        quads = list(store.quads_for_pattern(node, RDF.type, None, None))
+        objs  = [q.object for q in quads]
+        if OWL.ObjectProperty in objs:
+            return ObjectProperty(
+                        node.value, store = store
+                    )
+        elif OWL.AnnotationProperty:
+            return AnnotationProperty(
+                node.value, store = store
+                )
+        elif OWL.DatatypeProperty:
+            return DatatypeProperty(
+                node.value, store = store
+            )
+        else:
+            raise ValueError(f"property noen of object, annotation or datatype property")
+
 
 def __map_restriction_type(blank, dictio : dict, store : Store):
     if OWL.minCardinality in dictio.keys():
@@ -26,7 +45,6 @@ def __map_restriction_type(blank, dictio : dict, store : Store):
             store = store,
             value = dictio[OWL.maxCardinality] ,
             onProperty = dictio[OWL.onProperty],
-            onClass = dictio[OWL.onClass]
             )
     elif OWL.maxQualifiedCardinality in dictio.keys():
         return MaxQualifiedCardinality(
@@ -146,7 +164,6 @@ class NamedClass:
     - __eq__ : returns true if other iri is identical, else false
     """
     def __init__(
-
         self,
         iri : str,
         store : Store
@@ -156,7 +173,6 @@ class NamedClass:
         self.node = NamedNode(self.iri)
         self.store = store
         
-    
     @property
     def rdfsLabel(self):
         """The attribute linking the class to its rdfs:label
@@ -377,8 +393,7 @@ class NegationClass(ComplexClass):
                 store : Store
                 ):
         super().__init__(blank, store)
-        
-        
+    
     @property
     def onClass(self):
         popped, _ = pop_blank(self.blank, self.store)
@@ -389,7 +404,6 @@ class NegationClass(ComplexClass):
                 raise ValueError("found negation class with multiple classes with union or intersection")
         else:
             raise AttributeError("no class set")
-                    
     
     @property
     def entails(self):
@@ -409,10 +423,12 @@ class RestrictionClass:
         blank : BlankNode,
         store : Store,
         onProperty,
+        value : int | None = None
     ):
         self.blank = blank
-        self.onProperty = onProperty
+        self.onProperty = map_property_type(onProperty, store = store)
         self.store = store
+        self.value = value
     
     def __hash__(self):
         return hash(self.blank)
@@ -447,7 +463,7 @@ class Only(RestrictionClass):
         self.onClass = map_class_type(onClass, store = self.store)
     
     def __str__(self):
-        string = "(" + str(self.onProperty) + " ONLY " + ")"
+        string = "(" + str(self.onProperty) + " ONLY " +  str(self.onClass) + ")"
         return string
 
 
@@ -464,7 +480,6 @@ class Value(RestrictionClass):
         string = str(self.onProperty) + " VALUE "
         return string
 
-
 class MinCardinality(RestrictionClass):
     def __init__(
         self,
@@ -480,7 +495,6 @@ class MinCardinality(RestrictionClass):
     def __str__(self):
         return self.onProperty + "MIN" + str(self.value)
 
-
 class MinQualifiedCardinality(MinCardinality):
     def __init__(
         self,
@@ -488,11 +502,11 @@ class MinQualifiedCardinality(MinCardinality):
         store : Store,
         onProperty,
         value : int,
-        onClass : NamedClass | ComplexClass | RestrictionClass
+        onClass : NamedNode | BlankNode
         
         ):
         super().__init__(blank = blank, store = store, onProperty = onProperty, value = value)
-        self.onClass = onClass
+        self.onClass = map_class_type(onClass)
     
     def __str__(self):
         return f"(MIN {self.value} {self.onClass})"
@@ -503,8 +517,9 @@ class MaxCardinality(RestrictionClass):
         blank : BlankNode,
         store : Store,
         onProperty,
+        value : int
         ):
-        super().__init__(blank = blank, store = store, onProperty = onProperty)
+        super().__init__(blank = blank, store = store, onProperty = onProperty, value = value)
     
     def __str__(self):
         return f"(MAX {self.value})"
@@ -514,29 +529,15 @@ class MaxQualifiedCardinality(MaxCardinality):
         self,
         blank : BlankNode,
         store : Store,
+        onClass : NamedNode | BlankNode, 
         onProperty,
-        onClass : NamedClass | ComplexClass | RestrictionClass
         ):
         super().__init__(blank = blank, store = store, onProperty = onProperty)
-        self.onClass = onClass
+        self.onClass = map_class_type(onClass)
     def __str__(self):
         return f"(MAX {self.value})"
 
-class MaxCardinality(RestrictionClass):
-    def __init__(
-                    self,
-                    blank : BlankNode,
-                    store : Store,
-                    value : int,
-                    onProperty,
-                    onClass : NamedClass | ComplexClass | RestrictionClass
-                    ):
-        super().__init__(blank = blank, store = store, onProperty = onProperty)
-        self.onClass = onClass
-        self.value = value
-        
-    def __str__(self):
-            return f"({self.onProperty} MAX {self.value} {self.onClass})"
+
 
 
 
@@ -714,5 +715,7 @@ class AnnotationProperty(OntoEdge):
     def __init__(
         self,
         iri : str,
+        store : Store
     ):
         self.iri = iri
+        self.store = store

@@ -115,6 +115,12 @@ class Ontology:
         return (NamedClass(iri = c.subject.value, store = self.store) for c in classes if isinstance(c.subject, NamedNode))
     
     @property
+    def restrictions(self):
+        results = self.store.quads_for_pattern(None, RDF.type, OWL.Restriction, None)
+        for r in results:
+            yield map_class_type(r.subject, store = self.store)
+    
+    @property
     def object_properties(self):
         props = self.store.quads_for_pattern(None, RDF.type, OWL.ObjectProperty, None)
         return (ObjectProperty(p.subject.value, store= self.store) for p in props if isinstance(p.subject, NamedNode))

@@ -35,6 +35,7 @@ class OWL:
     allValuesFrom = NamedNode("http://www.w3.org/2002/07/owl#allValuesFrom")
     someValuesFrom = NamedNode("http://www.w3.org/2002/07/owl#someValuesFrom")
     hasValue = NamedNode("http://www.w3.org/2002/07/owl#hasValue")
+    onClass = NamedNode("http://www.w3.org/2002/07/owl#onClass")
     minCardinality = NamedNode("http://www.w3.org/2002/07/owl#minCardinality")
     maxCardinality = NamedNode("http://www.w3.org/2002/07/owl#maxCardinality")
     cardinality = NamedNode("http://www.w3.org/2002/07/owl#cardinality")
