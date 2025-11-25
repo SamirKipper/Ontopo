@@ -130,6 +130,13 @@ class Ontology:
         props = self.store.quads_for_pattern(None, RDF.type, OWL.DatatypeProperty, None)
         return (DatatypeProperty(p.subject.value, store = self.store) for p in props if isinstance(p.subject, NamedNode))
     
+    def format_hierarchy(self):
+        hierarchy = {}
+        for c in self.named_classes:
+            hierarchy[c.iri] = [s.iri for s in c.subClasses if isinstance(s, NamedClass)]
+        return hierarchy
+    
+    
     @property ## NOTE: HANDLE LABEL ERRORS HERE, SO ITERATION OVER GRAPH IS SIMPLE
     def structure(self) -> nx.DiGraph:
         ##* CORE GRAPH CREATION

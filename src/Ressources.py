@@ -233,7 +233,13 @@ class NamedClass:
             p, ann = r
             anns[p] = ann.value
         return anns
-        
+    
+    ## NOTE: currently only looking into named classes!!!
+    @property
+    def disjoints(self):
+        results = list(self.store.quads_for_pattern(self.node, OWL.disjointWith, None, None))
+        mapped = [map_class_type(r.object, self.store) for r in results if isinstance(r.object, NamedNode)]
+        return mapped
     
     def isSubclassOf(self, other) -> bool:
         """method, to check if the class is a subclass of another
@@ -251,7 +257,7 @@ class NamedClass:
         else:
             return False
     
-    def get_initial_region(self):
+    def create_sentences(self):
         label = str(self)
         sentences = []
         
@@ -285,11 +291,8 @@ class NamedClass:
             sentences.append(f"{label} has no parent classes")
         for a in self.annotations:
             sentences.append(f"{str(self)} has the annotation {str(a)}")
-        try:
-            center, cov = get_center_and_cov(label, sentences)
-        except Exception as e:
-            raise e
-        return center, cov
+        
+        return str(self), sentences
     
     def __hash__(self):
         return hash(self.iri)
@@ -312,9 +315,6 @@ class NamedClass:
     
     def __eq__(self, other):
         return isinstance(other,NamedClass) and self.iri == other.iri
-    
-    
-        
 
 
 class ComplexClass:
