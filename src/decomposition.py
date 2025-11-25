@@ -6,11 +6,13 @@ if torch.cuda.is_available():
     device = "cuda"
 else:
     device = "cpu"
+    
+model_name = "bert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModel.from_pretrained(model_name)
 
 def embed_label(target_phrase, sentence):
-    model_name = "bert-base-uncased"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name)
+    
     encoded = tokenizer(sentence, return_tensors="pt", add_special_tokens=False)
     sent_tokens = tokenizer.convert_ids_to_tokens(encoded["input_ids"][0])
     target_tokens = tokenizer.tokenize(target_phrase)
@@ -24,6 +26,7 @@ def embed_label(target_phrase, sentence):
         outputs = model(**encoded)
     hidden = outputs.last_hidden_state
     word_embedding = hidden[0, target_positions, :].mean(dim=0)
+
     return word_embedding
 
 
