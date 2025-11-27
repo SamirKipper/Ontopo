@@ -48,22 +48,30 @@ class OptimizableEllipse(nn.Module):
             self.theta
         )
 
-
-def containment_penalty(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=5.0, eps=1e-6):
+def containment_penalty(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=50.0, eps=1e-6):
     mu_c, mu_p = child.mu, parent.mu
-    Sigma_c, Sigma_p = child.cov(), parent.cov()
 
-    A = torch.linalg.solve(Sigma_p, Sigma_c)  
-    eigvals = torch.linalg.eigvalsh(A)  
-    lambda_axes = torch.max(eigvals)
+    r_c = torch.max(child.lambda1(), child.lambda2())
+    r_p = torch.max(parent.lambda1(), parent.lambda2())
 
-    delta = mu_c - mu_p
+    center_dist = torch.norm(mu_c - mu_p)
+
+    # enforce: center_dist + r_c <= r_p  <=>  center_dist + r_c - r_p <= 0
+    penalty_val = center_dist + r_c - r_p + eps
+
+    return weight * torch.relu(penalty_val)**2
+
+def containment_penalty_old(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=50.0, eps=1e-6): 
+    mu_c, mu_p = child.mu, parent.mu 
+    Sigma_c, Sigma_p = child.cov(), parent.cov() 
+    A = torch.linalg.solve(Sigma_p, Sigma_c) 
+    eigvals = torch.linalg.eigvalsh(A) 
+    lambda_axes = torch.max(eigvals) 
+    delta = mu_c - mu_p 
     lambda_shift = delta @ torch.linalg.solve(Sigma_p, delta) 
-
-    lambda_star = lambda_axes + lambda_shift + eps
-    loss = weight * torch.relu(lambda_star - 1)**2
+    lambda_star = lambda_axes + lambda_shift + eps 
+    loss = weight * torch.relu(lambda_star - 1)**2 
     return loss
-
 
 
 
@@ -123,24 +131,26 @@ def slemma_distance(E1, E2, num_samples=20):
     vals = torch.stack(vals)
     return vals.min()  # minimum S-lemma value
 
-
-def disjoint_penalty(E1, E2, weight=20.0, margin=4.0):
+def disjoint_penalty(E1, E2, weight=20.0, margin=0.0):
+    # centers
     mu1, mu2 = E1.mu, E2.mu
-    S1, S2 = E1.cov(), E2.cov()
 
-    delta = (mu1 - mu2).view(-1, 1)
-    Sigma = S1 + S2 + 1e-6 * torch.eye(2)   # stable combined metric
-    Sigma_inv = torch.inverse(Sigma)
+    # treat ellipses as circles using max axis length (largest std dev)
+    r1 = torch.max(E1.lambda1(), E1.lambda2())
+    r2 = torch.max(E2.lambda1(), E2.lambda2())
 
-    d = (delta.T @ Sigma_inv @ delta).squeeze()  # Mahalanobis distance
+    # center distance
+    d = torch.norm(mu1 - mu2)
 
-    # enforce d >= margin
-    return weight * torch.relu(margin - d)**2
+    # circles are disjoint if d >= r1 + r2 + margin
+    target = r1 + r2 + margin
+
+    return weight * torch.relu(target - d)**2
 
 
-
-
-
+def parent_size_penalty(parent, weight=0.1):
+    r_p = torch.max(parent.lambda1(), parent.lambda2())
+    return weight * r_p**2
 
 def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
     loss = 0.0
@@ -152,14 +162,16 @@ def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
             if c not in ellipses:                   
                 continue
             E_c = ellipses[c]
-            loss += containment_penalty(E_c, E_p, weight=1)
-            loss += shrinkage_penalty(E_c, E_p, alpha)
+            loss += containment_penalty(E_c, E_p, weight = 500000)
+            # loss += shrinkage_penalty(E_c, E_p, alpha)
             # loss += orientation_penalty(E_c, E_p)
-    for e in ellipses.values():
-        loss += regularization_penalty(e)
+    # for e in ellipses.values():
+        # loss += regularization_penalty(e)
     for a, b in disjoint_pairs:
-        loss += disjoint_penalty(ellipses[a], ellipses[b], weight= 50)   
+        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 1000)   
     return loss
+
+
 
 def optimize_hierarchy(ellipse_dict, hierarchy, disjoint_pairs,  lr=2e-3, alpha=0.8, target_loss = 0.5):
     """
@@ -202,7 +214,7 @@ def optimize_hierarchy_adaptive(
     alpha=0.8,
     target_loss=0.5,
     patience=50,          # plateau patience
-    lr_factor=0.5,        # shrink LR by 50%
+    lr_factor=0.2,        # shrink LR by 50%
     min_lr=1e-6
 ):
     """
@@ -225,7 +237,7 @@ def optimize_hierarchy_adaptive(
         factor=lr_factor,
         patience=patience,
         min_lr=min_lr,
-        verbose=True
+        ## verbose=True
     )
 
     loss = calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha)
