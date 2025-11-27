@@ -84,42 +84,60 @@ def orientation_penalty(child, parent, weight=0.1):
 def regularization_penalty(ellipse, weight=0.001):
     return weight * (ellipse.lambda1()**2 + ellipse.lambda2()**2)
 
+def quad_matrix(mu, Sigma_inv):
+    mu = mu.view(-1,1)
+    A = Sigma_inv
+    b = -Sigma_inv @ mu
+    c = (mu.T @ Sigma_inv @ mu - 1).squeeze()
+    
+    M = torch.zeros(3,3, dtype=torch.float32)
+    M[:2,:2] = A
+    M[:2, 2] = b.squeeze()
+    M[2, :2] = b.squeeze()
+    M[2,2] = c
+    return M
 
-def disjoint_penalty(E1, E2, iters=20, lr=0.05):
+
+def slemma_distance(E1, E2, num_samples=20):
     """
-    Returns signed minimal distance between two ellipsoids.
-    Positive => disjoint
-    Negative => overlapping (distance is penetration depth).
+    Stable S-lemma-based separation between ellipses.
+    Returns the minimum value of F(lambda).
     """
 
     mu1, mu2 = E1.mu, E2.mu
-    L1 = torch.linalg.cholesky(E1.cov() + 1e-6 * torch.eye(mu1.shape[0]))
-    L2 = torch.linalg.cholesky(E2.cov() + 1e-6 * torch.eye(mu2.shape[0]))
+    d = (mu1 - mu2).view(-1, 1)
 
-    n = mu1.shape[0]
+    S1 = E1.cov()
+    S2 = E2.cov()
 
-    # Parameter vectors on unit ball
-    u1 = torch.zeros(n, requires_grad=True)
-    u2 = torch.zeros(n, requires_grad=True)
+    # Sample λ values evenly from [0,1]
+    lambdas = torch.linspace(0, 1, num_samples)
 
-    opt = torch.optim.SGD([u1, u2], lr=lr)
+    vals = []
+    for lam in lambdas:
+        Sigma = lam * S1 + (1 - lam) * S2
+        Sigma_inv = torch.inverse(Sigma + 1e-6 * torch.eye(2))
+        F = (d.T @ Sigma_inv @ d).squeeze()
+        vals.append(F)
 
-    for _ in range(iters):
-        opt.zero_grad()
+    vals = torch.stack(vals)
+    return vals.min()  # minimum S-lemma value
 
-        # Project u onto unit ball (differentiable soft projection)
-        v1 = u1 / (u1.norm() + 1e-8)
-        v2 = u2 / (u2.norm() + 1e-8)
 
-        x = mu1 + L1 @ v1
-        y = mu2 + L2 @ v2
+def disjoint_penalty(E1, E2, weight=20.0, margin=4.0):
+    mu1, mu2 = E1.mu, E2.mu
+    S1, S2 = E1.cov(), E2.cov()
 
-        d = torch.norm(x - y)
-        d.backward(retain_graph=True)
-        opt.step()
+    delta = (mu1 - mu2).view(-1, 1)
+    Sigma = S1 + S2 + 1e-6 * torch.eye(2)   # stable combined metric
+    Sigma_inv = torch.inverse(Sigma)
 
-    # final distance
-    return torch.relu(d.detach())
+    d = (delta.T @ Sigma_inv @ delta).squeeze()  # Mahalanobis distance
+
+    # enforce d >= margin
+    return weight * torch.relu(margin - d)**2
+
+
 
 
 
@@ -134,13 +152,13 @@ def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
             if c not in ellipses:                   
                 continue
             E_c = ellipses[c]
-            loss += containment_penalty(E_c, E_p)
+            loss += containment_penalty(E_c, E_p, weight=1)
             loss += shrinkage_penalty(E_c, E_p, alpha)
-            loss += orientation_penalty(E_c, E_p)
+            # loss += orientation_penalty(E_c, E_p)
     for e in ellipses.values():
         loss += regularization_penalty(e)
     for a, b in disjoint_pairs:
-        loss += disjoint_penalty(ellipses[a], ellipses[b])   
+        loss += disjoint_penalty(ellipses[a], ellipses[b], weight= 50)   
     return loss
 
 def optimize_hierarchy(ellipse_dict, hierarchy, disjoint_pairs,  lr=2e-3, alpha=0.8, target_loss = 0.5):
@@ -176,3 +194,54 @@ def optimize_hierarchy(ellipse_dict, hierarchy, disjoint_pairs,  lr=2e-3, alpha=
             print(f"[step {step}] loss = {loss.item():.4f}")
     return ellipses
 
+def optimize_hierarchy_adaptive(
+    ellipse_dict,
+    hierarchy,
+    disjoint_pairs,
+    lr=2e-3,
+    alpha=0.8,
+    target_loss=0.5,
+    patience=50,          # plateau patience
+    lr_factor=0.5,        # shrink LR by 50%
+    min_lr=1e-6
+):
+    """
+    ellipse_dict: dict of iri -> [mu_2d, cov_2d]
+    hierarchy: dict of parent_iri -> list of child_iri
+    """
+
+    ellipses = {
+        iri: OptimizableEllipse(mu, cov)
+        for iri, (mu, cov) in ellipse_dict.items()
+    }
+
+    params = [p for e in ellipses.values() for p in e.parameters()]
+    optimizer = Adam(params, lr=lr)
+
+    # Adaptive LR scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=lr_factor,
+        patience=patience,
+        min_lr=min_lr,
+        verbose=True
+    )
+
+    loss = calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha)
+    step = 0
+
+    while loss > target_loss:
+        optimizer.zero_grad()
+        loss = calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha)
+        loss.backward()
+        optimizer.step()
+
+        # update LR based on loss
+        scheduler.step(loss)
+
+        step += 1
+        if step % 200 == 0:
+            print(f"[step {step}] loss = {loss.item():.4f} | lr = {optimizer.param_groups[0]['lr']:.6f}")
+
+    return ellipses
