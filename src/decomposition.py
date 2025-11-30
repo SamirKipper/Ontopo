@@ -20,43 +20,72 @@ class OptimizableEllipse(nn.Module):
 
         cov_init = torch.tensor(cov_init, dtype=torch.float32)
 
-        # Extract eigenstructure
+        # --- extract eigenvalues & eigenvectors ---
         eigvals, eigvecs = torch.linalg.eigh(cov_init)
         idx = torch.argsort(eigvals, descending=True)
         eigvals = eigvals[idx]
         eigvecs = eigvecs[:, idx]
 
-        # Params
+        # --- learnable parameters ---
         self.mu = nn.Parameter(torch.tensor(mu_init, dtype=torch.float32))
 
+        # log-eigenvalues for positivity
         self.log_l1 = nn.Parameter(torch.log(eigvals[0]))
         self.log_l2 = nn.Parameter(torch.log(eigvals[1]))
 
+        # orientation angle
         theta0 = torch.atan2(eigvecs[1, 0], eigvecs[0, 0])
         self.theta = nn.Parameter(theta0)
-        self.max_radius = 1 / torch.sqrt(eigvals[-1]).item()
 
+    # ---------------------------
+    # Derived properties (not stored)
+    # ---------------------------
+
+    @property
     def lambda1(self):
         return torch.exp(self.log_l1)
 
+    @property
     def lambda2(self):
         return torch.exp(self.log_l2)
 
-    def cov(self):
-        return cov_from_params(
-            self.lambda1(),
-            self.lambda2(),
-            self.theta
-        )
+    @property
+    def R(self):
+        # rotation matrix
+        c = torch.cos(self.theta)
+        s = torch.sin(self.theta)
+        return torch.stack([
+            torch.stack([c, -s]),
+            torch.stack([s,  c])
+        ])
 
-def containment_penalty(Child: 'OptimizableEllipse', Parent: 'OptimizableEllipse', weight=10):
-    mu1, mu2 = Child.mu, Parent.mu
-    max_1, max_2 = Child.max_radius, Parent.max_radius
-    return weight*(torch.norm(mu1-mu2) - (max_1-max_2)**2)
+    @property
+    def cov(self):
+        # covariance matrix = R diag(λ) Rᵀ
+        L = torch.diag(torch.stack([self.lambda1, self.lambda2]))
+        return self.R @ L @ self.R.t()
+
+    @property
+    def radii(self):
+        # geometric radii of ellipse (sqrt of eigenvalues)
+        return torch.sqrt(torch.stack([self.lambda1, self.lambda2]))
+
+    @property
+    def max_radius(self):
+        # radius along major axis under Mahalanobis metric
+        # 1 / sqrt(min eigenvalue)
+        return 1.0 / torch.sqrt(torch.min(self.lambda1, self.lambda2))
+
+    @property
+    def bounding_radius(self):
+        # radius of the smallest circle that contains the ellipse
+        return torch.sqrt(torch.max(self.lambda1, self.lambda2))
+
+
 
 def containment_penalty_old(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=1, eps=1e-6): 
     mu_c, mu_p = child.mu, parent.mu 
-    Sigma_c, Sigma_p = child.cov(), parent.cov() 
+    Sigma_c, Sigma_p = child.cov, parent.cov
     A = torch.linalg.solve(Sigma_p, Sigma_c) 
     eigvals = torch.linalg.eigvalsh(A) 
     lambda_axes = torch.max(eigvals) 
@@ -67,14 +96,30 @@ def containment_penalty_old(child: 'OptimizableEllipse', parent: 'OptimizableEll
     return loss
 
 
+def containment_penalty(child, parent, weight=10):
+    Sigma_p = parent.cov
+    Sigma_c = child.cov
+
+    # generalized eigenvalues
+    eigvals = torch.linalg.eigvalsh(
+        torch.linalg.solve(Sigma_p, Sigma_c)
+    )
+    M = torch.sqrt(torch.max(eigvals))
+
+    delta = child.mu - parent.mu
+    center_shift = torch.sqrt(delta @ torch.linalg.solve(Sigma_p, delta))
+
+    return weight * F.relu(M + center_shift - 1)**2
+
+
 
 def shrinkage_penalty(child, parent, alpha=0.8, weight=1.0):
     """
     Encourage child ellipse to be smaller than parent.
     """
     return weight * (
-        torch.relu(child.lambda1() - alpha * parent.lambda1())**2 +
-        torch.relu(child.lambda2() - alpha * parent.lambda2())**2
+        torch.relu(child.lambda1 - alpha * parent.lambda1)**2 +
+        torch.relu(child.lambda2 - alpha * parent.lambda2)**2
     )
 
 
@@ -83,19 +128,40 @@ def orientation_penalty(child, parent, weight=0.1):
 
 
 def regularization_penalty(ellipse, weight=0.001):
-    return weight * (ellipse.lambda1()**2 + ellipse.lambda2()**2)
+    return weight * (ellipse.lambda1**2 + ellipse.lambda2**2)
 
 
-def disjoint_penalty(E1, E2, weight=10):
+def disjoint_penalty(E1, E2, eps=0.1, weight=10):
     mu1, mu2 = E1.mu, E2.mu
-    r1, r2 = E1.max_radius, E2.max_radius
+
+    r1 = E1.bounding_radius
+    r2 = E2.bounding_radius
 
     dist = torch.norm(mu1 - mu2)
-    gap = dist - (r1 + r2)  # negative if overlapping
 
-    # harsh penalty for any overlap
-    loss = weight * F.softplus(-gap)**2
-    return loss
+    # they must satisfy dist >= r1 + r2 + eps
+    overlap = (r1 + r2 + eps) - dist
+
+    return weight * torch.relu(overlap)**2
+
+def disjoint_penalty_2(E1, E2, eps=0.1, weight=10):
+        mu1, mu2 = E1.mu, E2.mu
+        delta = mu1 - mu2
+        dist = torch.norm(delta)
+
+        if dist < 1e-8:
+            # Prevent collapse at same center
+            return weight * 1000.0
+
+        u = delta / dist  # direction vector
+
+        # directional radii
+        r1 = 1.0 / torch.sqrt(u @ torch.linalg.solve(E1.cov, u))
+        r2 = 1.0 / torch.sqrt(u @ torch.linalg.solve(E2.cov, u))
+
+        violation = r1 + r2 + eps - dist
+        return weight * F.relu(violation) ** 2
+
 
 def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
     loss = 0.0
@@ -107,49 +173,14 @@ def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
             if c not in ellipses:                   
                 continue
             E_c = ellipses[c]
-            loss += containment_penalty_old(E_c, E_p, weight = 1)
-            # loss += shrinkage_penalty(E_c, E_p, alpha)
+            loss += containment_penalty_old(E_c, E_p, weight = 50)
+            loss += shrinkage_penalty(E_c, E_p, 1/len(children), weight=.5)
             # loss += orientation_penalty(E_c, E_p)
     # for e in ellipses.values():
     #     loss += regularization_penalty(e)
     for a, b in disjoint_pairs:
-        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 10)   
+        loss += disjoint_penalty_2(ellipses[a], ellipses[b], weight = 20)
     return loss
-
-
-
-def optimize_hierarchy(ellipse_dict, hierarchy, disjoint_pairs,  lr=2e-3, alpha=0.8, target_loss = 0.5):
-    """
-    ellipse_dict: dict of iri -> [mu_2d (numpy array), cov_2d (numpy 2x2 array)]
-        Example:
-        {
-            "http://purl.org/x" : [mu, cov],
-            ...
-        }
-
-    hierarchy: dict of parent_iri -> list of child_iri
-
-    Returns:
-        dict of iri -> OptimizableEllipse instance
-    """
-    ellipses = {}
-    for iri, (mu, cov) in ellipse_dict.items():
-        ellipses[iri] = OptimizableEllipse(mu, cov)
-    optimizer = Adam(
-        [p for e in ellipses.values() for p in e.parameters()],
-        lr=lr
-        )
-    loss = calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha)
-    step = 0
-    while loss > target_loss:
-        optimizer.zero_grad()
-        loss = calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha)
-        loss.backward()
-        optimizer.step()
-        step += 1
-        if step % 200 == 0:
-            print(f"[step {step}] loss = {loss.item():.4f}")
-    return ellipses
 
 def optimize_hierarchy_adaptive(
     ellipse_dict,
@@ -200,5 +231,5 @@ def optimize_hierarchy_adaptive(
         step += 1
         if step % 200 == 0:
             print(f"[step {step}] loss = {loss.item():.4f} | lr = {optimizer.param_groups[0]['lr']:.6f}")
-
+    print(f"final loss = {loss:.4f} at iteration {step}")
     return ellipses
