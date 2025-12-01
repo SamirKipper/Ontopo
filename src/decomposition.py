@@ -28,6 +28,7 @@ class OptimizableEllipse(nn.Module):
 
         # --- learnable parameters ---
         self.mu = nn.Parameter(torch.tensor(mu_init, dtype=torch.float32))
+        self.mu_init = torch.tensor(mu_init, dtype=torch.float32)
 
         # log-eigenvalues for positivity
         self.log_l1 = nn.Parameter(torch.log(eigvals[0]))
@@ -99,18 +100,16 @@ def containment_penalty_old(child: 'OptimizableEllipse', parent: 'OptimizableEll
 def containment_penalty(child, parent, weight=10):
     Sigma_p = parent.cov
     Sigma_c = child.cov
-
-    # generalized eigenvalues
     eigvals = torch.linalg.eigvalsh(
         torch.linalg.solve(Sigma_p, Sigma_c)
     )
     M = torch.sqrt(torch.max(eigvals))
-
     delta = child.mu - parent.mu
     center_shift = torch.sqrt(delta @ torch.linalg.solve(Sigma_p, delta))
-
     return weight * F.relu(M + center_shift - 1)**2
 
+def minimal_movement_penalty(ellipse, weight=0.01):
+    return weight * torch.norm(ellipse.mu - ellipse.mu_init)**2
 
 
 def shrinkage_penalty(child, parent, alpha=0.8, weight=1.0):
@@ -133,32 +132,21 @@ def regularization_penalty(ellipse, weight=0.001):
 
 def disjoint_penalty(E1, E2, eps=0.1, weight=10):
     mu1, mu2 = E1.mu, E2.mu
-
     r1 = E1.bounding_radius
     r2 = E2.bounding_radius
-
     dist = torch.norm(mu1 - mu2)
-
-    # they must satisfy dist >= r1 + r2 + eps
     overlap = (r1 + r2 + eps) - dist
-
     return weight * torch.relu(overlap)**2
 
 def disjoint_penalty_2(E1, E2, eps=0.1, weight=10):
         mu1, mu2 = E1.mu, E2.mu
         delta = mu1 - mu2
         dist = torch.norm(delta)
-
         if dist < 1e-8:
-            # Prevent collapse at same center
             return weight * 1000.0
-
-        u = delta / dist  # direction vector
-
-        # directional radii
+        u = delta / dist
         r1 = 1.0 / torch.sqrt(u @ torch.linalg.solve(E1.cov, u))
         r2 = 1.0 / torch.sqrt(u @ torch.linalg.solve(E2.cov, u))
-
         violation = r1 + r2 + eps - dist
         return weight * F.relu(violation) ** 2
 
@@ -173,13 +161,14 @@ def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
             if c not in ellipses:                   
                 continue
             E_c = ellipses[c]
-            loss += containment_penalty_old(E_c, E_p, weight = 50)
+            loss += containment_penalty_old(E_c, E_p, weight = 70)
             loss += shrinkage_penalty(E_c, E_p, 1/len(children), weight=.5)
             # loss += orientation_penalty(E_c, E_p)
-    # for e in ellipses.values():
-    #     loss += regularization_penalty(e)
+    for e in ellipses.values():
+        # loss += regularization_penalty(e)
+        loss += minimal_movement_penalty(e, weight=0.001)
     for a, b in disjoint_pairs:
-        loss += disjoint_penalty_2(ellipses[a], ellipses[b], weight = 20)
+        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 140)
     return loss
 
 def optimize_hierarchy_adaptive(
@@ -190,7 +179,7 @@ def optimize_hierarchy_adaptive(
     alpha=0.8,
     target_loss=0.5,
     patience=50,         
-    lr_factor=0.2,        
+    lr_factor=0.1,        
     min_lr=1e-4
 ):
     """
@@ -231,5 +220,6 @@ def optimize_hierarchy_adaptive(
         step += 1
         if step % 200 == 0:
             print(f"[step {step}] loss = {loss.item():.4f} | lr = {optimizer.param_groups[0]['lr']:.6f}")
+            ## print(f"entity mu : {ellipses['http://purl.obolibrary.org/obo/BFO_0000001'].mu} cov : {ellipses['http://purl.obolibrary.org/obo/BFO_0000001'].cov}")
     print(f"final loss = {loss:.4f} at iteration {step}")
     return ellipses
