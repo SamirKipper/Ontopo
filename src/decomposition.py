@@ -135,7 +135,7 @@ def disjoint_penalty(E1, E2, eps=0.1, weight=10):
     r1 = E1.bounding_radius
     r2 = E2.bounding_radius
     dist = torch.norm(mu1 - mu2)
-    overlap = (r1 + r2 + eps) - dist
+    overlap = 2*(r1 + r2 + eps) -dist
     return weight * torch.relu(overlap)**2
 
 def disjoint_penalty_2(E1, E2, eps=0.1, weight=10):
