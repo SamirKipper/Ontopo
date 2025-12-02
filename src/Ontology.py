@@ -119,6 +119,13 @@ class Ontology:
         results = self.store.quads_for_pattern(None, RDF.type, OWL.Restriction, None)
         for r in results:
             yield map_class_type(r.subject, store = self.store)
+    @property
+    def allDisjointsList(self):
+        results = self.store.quads_for_pattern(None, RDF.type, OWL.AllDisjointClasses, None)
+        for r in results:
+            members = get_members(r.subject, self.store)
+            mapped = [map_class_type(m,store = self.store) for m in members]
+            yield mapped
     
     @property
     def object_properties(self):

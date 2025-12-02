@@ -220,3 +220,10 @@ def get_complement(OntoClass : NamedNode, store : Store) -> list:
     classes = get_classes_list(store)
     complement = [item for item in classes if item not in class_group]
     return complement
+
+def get_members(blank, store : Store):
+    results = list(store.quads_for_pattern(blank, OWL.members, None, None))
+    if len(results) == 1 :
+        return extract_rdf_list(results[0].object, store = store)
+    else:
+        raise ValueError("multiple quads found for blank")

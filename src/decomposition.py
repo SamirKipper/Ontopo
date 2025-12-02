@@ -150,6 +150,11 @@ def disjoint_penalty_2(E1, E2, eps=0.1, weight=10):
         violation = r1 + r2 + eps - dist
         return weight * F.relu(violation) ** 2
 
+def outward_pressure(child, parent, weight=1.0):
+    delta = child.mu - parent.mu
+    dist = torch.norm(delta)
+    return -weight * dist
+
 
 def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
     loss = 0.0
@@ -161,14 +166,13 @@ def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
             if c not in ellipses:                   
                 continue
             E_c = ellipses[c]
-            loss += containment_penalty_old(E_c, E_p, weight = 70)
-            loss += shrinkage_penalty(E_c, E_p, 1/len(children), weight=.5)
-            # loss += orientation_penalty(E_c, E_p)
+            loss += containment_penalty_old(E_c, E_p, weight = 50)
+            loss += shrinkage_penalty(E_c, E_p, 1/len(children), weight=5)
+            loss += outward_pressure(E_c, E_p, weight = 1)
     for e in ellipses.values():
-        # loss += regularization_penalty(e)
         loss += minimal_movement_penalty(e, weight=0.001)
     for a, b in disjoint_pairs:
-        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 140)
+        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 50) ## NOTE: 140 worked decently but overpowered the containment
     return loss
 
 def optimize_hierarchy_adaptive(
@@ -194,15 +198,12 @@ def optimize_hierarchy_adaptive(
 
     params = [p for e in ellipses.values() for p in e.parameters()]
     optimizer = Adam(params, lr=lr)
-
-    # Adaptive LR scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
         factor=lr_factor,
         patience=patience,
         min_lr=min_lr,
-        ## verbose=True
     )
 
     loss = calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha)
@@ -213,13 +214,10 @@ def optimize_hierarchy_adaptive(
         loss = calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha)
         loss.backward()
         optimizer.step()
-
-        # update LR based on loss
         scheduler.step(loss)
 
         step += 1
         if step % 200 == 0:
             print(f"[step {step}] loss = {loss.item():.4f} | lr = {optimizer.param_groups[0]['lr']:.6f}")
-            ## print(f"entity mu : {ellipses['http://purl.obolibrary.org/obo/BFO_0000001'].mu} cov : {ellipses['http://purl.obolibrary.org/obo/BFO_0000001'].cov}")
     print(f"final loss = {loss:.4f} at iteration {step}")
     return ellipses

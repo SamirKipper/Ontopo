@@ -51,3 +51,4 @@ class OWL:
     topDataProperty = NamedNode("http://www.w3.org/2002/07/owl#topDataProperty")
     bottomDataProperty = NamedNode("http://www.w3.org/2002/07/owl#bottomDataProperty")
     inverseOf = NamedNode("http://www.w3.org/2002/07/owl#inverseOf")
+    members = NamedNode("http://www.w3.org/2002/07/owl#members")
