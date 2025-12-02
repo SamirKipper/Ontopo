@@ -40,7 +40,7 @@ class Ontology:
     The baseclass for an ontology.
     
     #### properties:
-    - store: the store, that the d4c is stored in
+    - store: the store, that the ontology is stored in
     - classes: iterator over all classes of the ontology, including complex classes, loads lazily
     - named_classes: iterator over all classes of the ontology with an iri
     - object_properties: iterator over all object properties in the ontology

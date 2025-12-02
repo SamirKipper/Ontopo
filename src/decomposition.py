@@ -71,7 +71,7 @@ class OptimizableEllipse(nn.Module):
 
 
 
-def containment_penalty_old(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=1, eps=1e-6): 
+def containment_penalty(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=1, eps=1e-6): 
     mu_c, mu_p = child.mu, parent.mu 
     Sigma_c, Sigma_p = child.cov, parent.cov
     A = torch.linalg.solve(Sigma_p, Sigma_c) 
@@ -83,17 +83,6 @@ def containment_penalty_old(child: 'OptimizableEllipse', parent: 'OptimizableEll
     loss = weight * torch.relu(lambda_star - 1)**2 
     return loss
 
-
-def containment_penalty(child, parent, weight=10):
-    Sigma_p = parent.cov
-    Sigma_c = child.cov
-    eigvals = torch.linalg.eigvalsh(
-        torch.linalg.solve(Sigma_p, Sigma_c)
-    )
-    M = torch.sqrt(torch.max(eigvals))
-    delta = child.mu - parent.mu
-    center_shift = torch.sqrt(delta @ torch.linalg.solve(Sigma_p, delta))
-    return weight * F.relu(M + center_shift - 1)**2
 
 def minimal_movement_penalty(ellipse, weight=0.01):
     return weight * torch.norm(ellipse.mu - ellipse.mu_init)**2
@@ -125,23 +114,6 @@ def disjoint_penalty(E1, E2, eps=0.1, weight=10):
     overlap = 2*(r1 + r2 + eps) -dist
     return weight * torch.relu(overlap)**2
 
-def disjoint_penalty_2(E1, E2, eps=0.1, weight=10):
-        mu1, mu2 = E1.mu, E2.mu
-        delta = mu1 - mu2
-        dist = torch.norm(delta)
-        if dist < 1e-8:
-            return weight * 1000.0
-        u = delta / dist
-        r1 = 1.0 / torch.sqrt(u @ torch.linalg.solve(E1.cov, u))
-        r2 = 1.0 / torch.sqrt(u @ torch.linalg.solve(E2.cov, u))
-        violation = r1 + r2 + eps - dist
-        return weight * F.relu(violation) ** 2
-
-def outward_pressure(child, parent, weight=1.0):
-    delta = child.mu - parent.mu
-    dist = torch.norm(delta)
-    return -weight * dist
-
 
 def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
     loss = 0.0
@@ -153,13 +125,12 @@ def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
             if c not in ellipses:                   
                 continue
             E_c = ellipses[c]
-            loss += containment_penalty_old(E_c, E_p, weight = 10)
+            loss += containment_penalty(E_c, E_p, weight = 10)
             loss += shrinkage_penalty(E_c, E_p, 1/len(children), weight=5)
-            ## loss += outward_pressure(E_c, E_p, weight = 1)
     for e in ellipses.values():
         loss += minimal_movement_penalty(e, weight=0.001)
     for a, b in disjoint_pairs:
-        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 10) ## NOTE: 140 worked decently but overpowered the containment
+        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 10) 
     return loss
 
 def optimize_hierarchy_adaptive(
