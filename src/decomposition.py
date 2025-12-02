@@ -19,28 +19,16 @@ class OptimizableEllipse(nn.Module):
         super().__init__()
 
         cov_init = torch.tensor(cov_init, dtype=torch.float32)
-
-        # --- extract eigenvalues & eigenvectors ---
         eigvals, eigvecs = torch.linalg.eigh(cov_init)
         idx = torch.argsort(eigvals, descending=True)
         eigvals = eigvals[idx]
         eigvecs = eigvecs[:, idx]
-
-        # --- learnable parameters ---
         self.mu = nn.Parameter(torch.tensor(mu_init, dtype=torch.float32))
         self.mu_init = torch.tensor(mu_init, dtype=torch.float32)
-
-        # log-eigenvalues for positivity
         self.log_l1 = nn.Parameter(torch.log(eigvals[0]))
-        self.log_l2 = nn.Parameter(torch.log(eigvals[1]))
-
-        # orientation angle
+        self.log_l2 = nn.Parameter(torch.log(eigvals[1]))  
         theta0 = torch.atan2(eigvecs[1, 0], eigvecs[0, 0])
         self.theta = nn.Parameter(theta0)
-
-    # ---------------------------
-    # Derived properties (not stored)
-    # ---------------------------
 
     @property
     def lambda1(self):
@@ -52,7 +40,6 @@ class OptimizableEllipse(nn.Module):
 
     @property
     def R(self):
-        # rotation matrix
         c = torch.cos(self.theta)
         s = torch.sin(self.theta)
         return torch.stack([
@@ -166,13 +153,13 @@ def calculate_loss(ellipses, hierarchy, disjoint_pairs, alpha):
             if c not in ellipses:                   
                 continue
             E_c = ellipses[c]
-            loss += containment_penalty_old(E_c, E_p, weight = 50)
+            loss += containment_penalty_old(E_c, E_p, weight = 10)
             loss += shrinkage_penalty(E_c, E_p, 1/len(children), weight=5)
-            loss += outward_pressure(E_c, E_p, weight = 1)
+            ## loss += outward_pressure(E_c, E_p, weight = 1)
     for e in ellipses.values():
         loss += minimal_movement_penalty(e, weight=0.001)
     for a, b in disjoint_pairs:
-        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 50) ## NOTE: 140 worked decently but overpowered the containment
+        loss += disjoint_penalty(ellipses[a], ellipses[b], weight = 10) ## NOTE: 140 worked decently but overpowered the containment
     return loss
 
 def optimize_hierarchy_adaptive(
