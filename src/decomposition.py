@@ -71,7 +71,7 @@ class OptimizableEllipse(nn.Module):
 
 
 
-def containment_penalty(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=1, eps=1e-6): 
+def containment_penalty(child: 'OptimizableEllipse', parent: 'OptimizableEllipse', weight=1, eps=1e-2): 
     mu_c, mu_p = child.mu, parent.mu 
     Sigma_c, Sigma_p = child.cov, parent.cov
     A = torch.linalg.solve(Sigma_p, Sigma_c) 
@@ -80,7 +80,7 @@ def containment_penalty(child: 'OptimizableEllipse', parent: 'OptimizableEllipse
     delta = mu_c - mu_p 
     lambda_shift = delta @ torch.linalg.solve(Sigma_p, delta) 
     lambda_star = lambda_axes + lambda_shift + eps 
-    loss = weight * torch.relu(lambda_star - 1)**2 
+    loss = weight * torch.relu(lambda_star + eps - 1)**2 
     return loss
 
 
