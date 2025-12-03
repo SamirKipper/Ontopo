@@ -1,8 +1,9 @@
-- [EmbedAlign](#embedalign)
+- [Ontopo](#ontopo)
   - [Installation](#installation)
 
 
-# EmbedAlign
+
+# Ontopo
 
 This repository explores topological structures of ontologies and how they can be used for ontology alignment.
 
@@ -18,3 +19,4 @@ afterwards, run
 pip install -r requirements.txt
 ```
 from the root folder of this repository
+
