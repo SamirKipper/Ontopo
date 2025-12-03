@@ -1,19 +1,20 @@
 - [EmbedAlign](#embedalign)
   - [Installation](#installation)
-  - [useful websites and documentation of dependencies](#useful-websites-and-documentation-of-dependencies)
 
 
 # EmbedAlign
 
-This Repository explores alignment processes based on vector embedding of the labels and definitions of Ontologies and underlying graphstructure.
+This repository explores topological structures of ontologies and how they can be used for ontology alignment.
 
 
 ## Installation
+clone the repository. Then you can either run the setup.sh or create your own python environment by running 
+```bash
+python3.<versionnumber> -m venv <envname> 
+```
 
-First, change the password, port and username in the docker compose file to your specific preferences or needs.
-Next, create a .env file, that contains the following information:
-
-
-## useful websites and documentation of dependencies
-
-- [shapely](https://pypi.org/project/shapely/)
+afterwards, run 
+```bash
+pip install -r requirements.txt
+```
+from the root folder of this repository
