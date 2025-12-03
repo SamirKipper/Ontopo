@@ -86,7 +86,7 @@ class Ontology:
         """
         ### Overview
         the property accesses the internal database and returns all types of 
-        classes from the d4c ontology, including complex classes
+        classes from the ontology, including complex classes
         It loads the classes lazily.
         
         ### Returns:
